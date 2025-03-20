@@ -5,59 +5,29 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <limits.h>
+#include <string.h>
 
-/* ---------------- Configuration Macros ---------------- */
-
-#define USE_L1      1
-#define USE_L2      1
-#define USE_L3      1
-#define USE_L4      0  /* Change to 1 to enable L4 */
-
-#define L1_SIZE     (32 * 1024)   // 32 KB for each L1 cache
-#define L1_ASSOC    8
-#define L1_LINE     64
-#define L1_LATENCY  1
-
-#define L2_SIZE     (256 * 1024)  // 256 KB
-#define L2_ASSOC    8
-#define L2_LINE     64
-#define L2_LATENCY  10
-
-#define L3_SIZE     (2048 * 1024)  // 2 MB
-#define L3_ASSOC    8
-#define L3_LINE     64
-#define L3_LATENCY  20
-
-#define L4_SIZE     (0) // 0 MB
-#define L4_ASSOC    16
-#define L4_LINE     64
-#define L4_LATENCY  40
-
-#define MEM_LATENCY 100
-
-/* ---------------- Type Definitions ---------------- */
-
-/* Replacement Policy Enum */
+/* ---------------- Replacement Policy Enum ---------------- */
 typedef enum {
     POLICY_LRU,
     POLICY_BIP,
     POLICY_RANDOM
 } ReplacementPolicy;
 
-/* Cache Line */
+/* ---------------- Cache Line ---------------- */
 typedef struct {
     unsigned int tag;
     int valid;
     unsigned long last_access_time;  // used for LRU/BIP (not used for RANDOM)
 } CacheLine;
 
-/* Cache Set: contains an array of cache lines */
+/* ---------------- Cache Set ---------------- */
 typedef struct {
     int num_lines;         // equals associativity
     CacheLine *lines;      // dynamically allocated array of cache lines
 } CacheSet;
 
-/* Cache Level structure */
+/* ---------------- Cache Level ---------------- */
 typedef struct CacheLevel {
     int cache_size;        // in bytes
     int associativity;     // number of lines per set
@@ -72,7 +42,49 @@ typedef struct CacheLevel {
     int (*find_victim)(CacheSet *set);
 } CacheLevel;
 
-/* ---------------- Replacement Policy Function Prototypes ---------------- */
+/* ---------------- Configuration Structure ---------------- */
+typedef struct {
+    int use_l1;
+    int use_l2;
+    int use_l3;
+    int use_l4;
+
+    int l1_size;
+    int l1_assoc;
+    int l1_line;
+    int l1_latency;
+    char l1_policy_str[16];
+
+    int l2_size;
+    int l2_assoc;
+    int l2_line;
+    int l2_latency;
+    char l2_policy_str[16];
+
+    int l3_size;
+    int l3_assoc;
+    int l3_line;
+    int l3_latency;
+    char l3_policy_str[16];
+
+    int l4_size;
+    int l4_assoc;
+    int l4_line;
+    int l4_latency;
+    char l4_policy_str[16];
+
+    int mem_latency;
+} CacheConfig;
+
+/* Global configuration variable. */
+extern CacheConfig g_config;
+
+/* ---------------- Function Prototypes ---------------- */
+
+/* Configuration file reader */
+void read_config(const char *filename);
+
+/* Replacement Policy Function Prototypes */
 void update_policy_lru(CacheSet *set, int line_index);
 int find_victim_lru(CacheSet *set);
 
@@ -82,15 +94,11 @@ int find_victim_bip(CacheSet *set);
 void update_policy_random(CacheSet *set, int line_index);
 int find_victim_random(CacheSet *set);
 
-/* ---------------- Cache Level Initialization ---------------- */
+/* Cache Level Initialization and Deallocation */
 CacheLevel* init_cache_level(int cache_size, int associativity, int line_size, int access_latency, ReplacementPolicy policy);
 void free_cache_level(CacheLevel *cache);
 
 /* ---------------- Simulator API ---------------- */
-/*
- * Note: When the simulator is not active (i.e. before start() is called or after end() is called),
- * these functions will disregard simulation activity.
- */
 void init(void);
 void start(void);
 void end(void);
@@ -102,14 +110,14 @@ void flush_data(unsigned int paddr);
 void invalidate(unsigned int paddr);
 void invalidate_all(void);
 
-/* ---------------- New Prefetch Functions ---------------- */
+/* New Prefetch Functions */
 int simulate_prefetch_t0(unsigned int vaddr, unsigned int paddr, int access_type);
 int simulate_prefetch_t1(unsigned int vaddr, unsigned int paddr, int access_type);
 int simulate_prefetch_t2(unsigned int vaddr, unsigned int paddr, int access_type);
 int simulate_prefetch_nta(unsigned int vaddr, unsigned int paddr, int access_type);
 int simulate_prefetch_w(unsigned int vaddr, unsigned int paddr, int access_type);
 
-/* ---------------- Internal Global Variables ---------------- */
+/* ---------------- Global Internal Variables ---------------- */
 extern CacheLevel *g_l1_data;
 extern CacheLevel *g_l1_instr;
 extern CacheLevel *g_l2;
@@ -121,7 +129,7 @@ extern int g_instr_accesses;
 extern int g_data_accesses;
 extern unsigned long g_total_latency_instr;
 extern unsigned long g_total_latency_data;
-/* g_counting indicates whether the simulator is active */
+/* g_counting indicates whether simulation counting is active */
 extern int g_counting;
 
 #endif /* CACHE_H */

@@ -1,7 +1,123 @@
 #include "cache.h"
 #include <errno.h>
-#include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
+
+/* ---------------- Global Configuration Variable ---------------- */
+CacheConfig g_config;
+
+/* ---------------- Configuration File Reader ---------------- */
+void read_config(const char *filename) {
+    /* Set default values */
+    g_config.use_l1 = 1;
+    g_config.use_l2 = 1;
+    g_config.use_l3 = 1;
+    g_config.use_l4 = 0;
+
+    g_config.l1_size = 32 * 1024;
+    g_config.l1_assoc = 8;
+    g_config.l1_line = 64;
+    g_config.l1_latency = 1;
+    snprintf(g_config.l1_policy_str, sizeof(g_config.l1_policy_str), "LRU");
+
+    g_config.l2_size = 256 * 1024;
+    g_config.l2_assoc = 8;
+    g_config.l2_line = 64;
+    g_config.l2_latency = 10;
+    snprintf(g_config.l2_policy_str, sizeof(g_config.l2_policy_str), "LRU");
+
+    g_config.l3_size = 2048 * 1024;
+    g_config.l3_assoc = 8;
+    g_config.l3_line = 64;
+    g_config.l3_latency = 20;
+    snprintf(g_config.l3_policy_str, sizeof(g_config.l3_policy_str), "LRU");
+
+    g_config.l4_size = 0;
+    g_config.l4_assoc = 16;
+    g_config.l4_line = 64;
+    g_config.l4_latency = 40;
+    snprintf(g_config.l4_policy_str, sizeof(g_config.l4_policy_str), "LRU");
+
+    g_config.mem_latency = 100;
+
+    FILE *fp = fopen(filename, "r");
+    if (!fp) {
+        fprintf(stderr, "Warning: config file %s not found, using default configuration.\n", filename);
+        return;
+    }
+
+    char line[256];
+    while (fgets(line, sizeof(line), fp)) {
+        /* Skip comments and empty lines */
+        char *trim = line;
+        while (*trim == ' ' || *trim == '\t') trim++;
+        if (*trim == '#' || *trim == '\n' || *trim == '\0')
+            continue;
+        /* Find '=' */
+        char *eq = strchr(trim, '=');
+        if (!eq)
+            continue;
+        *eq = '\0';
+        char *key = trim;
+        char *value = eq + 1;
+        /* Remove newline */
+        char *newline = strchr(value, '\n');
+        if (newline)
+            *newline = '\0';
+
+        if (strcmp(key, "USE_L1") == 0)
+            g_config.use_l1 = atoi(value);
+        else if (strcmp(key, "USE_L2") == 0)
+            g_config.use_l2 = atoi(value);
+        else if (strcmp(key, "USE_L3") == 0)
+            g_config.use_l3 = atoi(value);
+        else if (strcmp(key, "USE_L4") == 0)
+            g_config.use_l4 = atoi(value);
+        else if (strcmp(key, "L1_SIZE") == 0)
+            g_config.l1_size = atoi(value);
+        else if (strcmp(key, "L1_ASSOC") == 0)
+            g_config.l1_assoc = atoi(value);
+        else if (strcmp(key, "L1_LINE") == 0)
+            g_config.l1_line = atoi(value);
+        else if (strcmp(key, "L1_LATENCY") == 0)
+            g_config.l1_latency = atoi(value);
+        else if (strcmp(key, "L1_POLICY") == 0)
+            strncpy(g_config.l1_policy_str, value, sizeof(g_config.l1_policy_str)-1);
+        else if (strcmp(key, "L2_SIZE") == 0)
+            g_config.l2_size = atoi(value);
+        else if (strcmp(key, "L2_ASSOC") == 0)
+            g_config.l2_assoc = atoi(value);
+        else if (strcmp(key, "L2_LINE") == 0)
+            g_config.l2_line = atoi(value);
+        else if (strcmp(key, "L2_LATENCY") == 0)
+            g_config.l2_latency = atoi(value);
+        else if (strcmp(key, "L2_POLICY") == 0)
+            strncpy(g_config.l2_policy_str, value, sizeof(g_config.l2_policy_str)-1);
+        else if (strcmp(key, "L3_SIZE") == 0)
+            g_config.l3_size = atoi(value);
+        else if (strcmp(key, "L3_ASSOC") == 0)
+            g_config.l3_assoc = atoi(value);
+        else if (strcmp(key, "L3_LINE") == 0)
+            g_config.l3_line = atoi(value);
+        else if (strcmp(key, "L3_LATENCY") == 0)
+            g_config.l3_latency = atoi(value);
+        else if (strcmp(key, "L3_POLICY") == 0)
+            strncpy(g_config.l3_policy_str, value, sizeof(g_config.l3_policy_str)-1);
+        else if (strcmp(key, "L4_SIZE") == 0)
+            g_config.l4_size = atoi(value);
+        else if (strcmp(key, "L4_ASSOC") == 0)
+            g_config.l4_assoc = atoi(value);
+        else if (strcmp(key, "L4_LINE") == 0)
+            g_config.l4_line = atoi(value);
+        else if (strcmp(key, "L4_LATENCY") == 0)
+            g_config.l4_latency = atoi(value);
+        else if (strcmp(key, "L4_POLICY") == 0)
+            strncpy(g_config.l4_policy_str, value, sizeof(g_config.l4_policy_str)-1);
+        else if (strcmp(key, "MEM_LATENCY") == 0)
+            g_config.mem_latency = atoi(value);
+    }
+    fclose(fp);
+}
 
 /* ---------------- Internal Global Variables ---------------- */
 
@@ -61,9 +177,7 @@ int find_victim_bip(CacheSet *set) {
 }
 
 /* RANDOM Eviction Implementation */
-/* For RANDOM, we do not need to update any usage information */
 void update_policy_random(CacheSet *set, int line_index) {
-    /* No update needed for random eviction policy */
     (void)set;  /* Suppress unused parameter warning */
     (void)line_index;
 }
@@ -72,8 +186,19 @@ int find_victim_random(CacheSet *set) {
     return rand() % set->num_lines;
 }
 
-/* ---------------- Cache Level Initialization ---------------- */
+/* ---------------- Helper: Parse Policy String ---------------- */
+static ReplacementPolicy parse_policy(const char *policy_str) {
+    if (strcmp(policy_str, "LRU") == 0)
+        return POLICY_LRU;
+    else if (strcmp(policy_str, "BIP") == 0)
+        return POLICY_BIP;
+    else if (strcmp(policy_str, "RANDOM") == 0)
+        return POLICY_RANDOM;
+    else
+        return POLICY_LRU;  /* Default */
+}
 
+/* ---------------- Cache Level Initialization ---------------- */
 CacheLevel* init_cache_level(int cache_size, int associativity, int line_size, int access_latency, ReplacementPolicy policy) {
     CacheLevel *cache = malloc(sizeof(CacheLevel));
     if (!cache) { perror("malloc"); exit(1); }
@@ -129,7 +254,6 @@ void free_cache_level(CacheLevel *cache) {
 }
 
 /* ---------------- Simulator Internal Registration ---------------- */
-
 static void init_cache_simulator(CacheLevel *l1_data, CacheLevel *l1_instr, CacheLevel *l2, CacheLevel *l3, CacheLevel *l4) {
     g_l1_data   = l1_data;
     g_l1_instr  = l1_instr;
@@ -140,22 +264,29 @@ static void init_cache_simulator(CacheLevel *l1_data, CacheLevel *l1_instr, Cach
 }
 
 /* ---------------- Simulator API Functions ---------------- */
-
 void init(void) {
-  /* Instantiate caches using configuration macros */
-  if (USE_L1) {
-      g_l1_data = init_cache_level(L1_SIZE, L1_ASSOC, L1_LINE, L1_LATENCY, POLICY_LRU);
-      g_l1_instr = init_cache_level(L1_SIZE, L1_ASSOC, L1_LINE, L1_LATENCY, POLICY_LRU);
-  }
-  if (USE_L2)
-      g_l2 = init_cache_level(L2_SIZE, L2_ASSOC, L2_LINE, L2_LATENCY, POLICY_LRU);
-  if (USE_L3)
-      g_l3 = init_cache_level(L3_SIZE, L3_ASSOC, L3_LINE, L3_LATENCY, POLICY_LRU);
-  if (USE_L4)
-      g_l4 = init_cache_level(L4_SIZE, L4_ASSOC, L4_LINE, L4_LATENCY, POLICY_LRU);
-  
-  init_cache_simulator(g_l1_data, g_l1_instr, g_l2, g_l3, g_l4);
-  g_counting = 0;
+    /* Read configuration from config.txt */
+    read_config("config.txt");
+
+    /* Instantiate caches using configuration values */
+    if (g_config.use_l1) {
+        g_l1_data = init_cache_level(g_config.l1_size, g_config.l1_assoc, g_config.l1_line,
+                                       g_config.l1_latency, parse_policy(g_config.l1_policy_str));
+        g_l1_instr = init_cache_level(g_config.l1_size, g_config.l1_assoc, g_config.l1_line,
+                                       g_config.l1_latency, parse_policy(g_config.l1_policy_str));
+    }
+    if (g_config.use_l2)
+        g_l2 = init_cache_level(g_config.l2_size, g_config.l2_assoc, g_config.l2_line,
+                                g_config.l2_latency, parse_policy(g_config.l2_policy_str));
+    if (g_config.use_l3)
+        g_l3 = init_cache_level(g_config.l3_size, g_config.l3_assoc, g_config.l3_line,
+                                g_config.l3_latency, parse_policy(g_config.l3_policy_str));
+    if (g_config.use_l4)
+        g_l4 = init_cache_level(g_config.l4_size, g_config.l4_assoc, g_config.l4_line,
+                                g_config.l4_latency, parse_policy(g_config.l4_policy_str));
+    
+    init_cache_simulator(g_l1_data, g_l1_instr, g_l2, g_l3, g_l4);
+    g_counting = 0;
 }
 
 void start(void) {
@@ -206,15 +337,15 @@ void end(void) {
     
     fprintf(fp, "\n--- Replacement Policy ---\n");
     if (g_l1_instr)
-        fprintf(fp, "L1 Instruction: %s\n", g_l1_instr->policy == POLICY_LRU ? "LRU" : (g_l1_instr->policy == POLICY_BIP ? "BIP" : "RANDOM"));
+        fprintf(fp, "L1 Instruction: %s\n", (g_l1_instr->policy == POLICY_LRU) ? "LRU" : ((g_l1_instr->policy == POLICY_BIP) ? "BIP" : "RANDOM"));
     if (g_l1_data)
-        fprintf(fp, "L1 Data: %s\n", g_l1_data->policy == POLICY_LRU ? "LRU" : (g_l1_data->policy == POLICY_BIP ? "BIP" : "RANDOM"));
+        fprintf(fp, "L1 Data: %s\n", (g_l1_data->policy == POLICY_LRU) ? "LRU" : ((g_l1_data->policy == POLICY_BIP) ? "BIP" : "RANDOM"));
     if (g_l2)
-        fprintf(fp, "L2: %s\n", g_l2->policy == POLICY_LRU ? "LRU" : (g_l2->policy == POLICY_BIP ? "BIP" : "RANDOM"));
+        fprintf(fp, "L2: %s\n", (g_l2->policy == POLICY_LRU) ? "LRU" : ((g_l2->policy == POLICY_BIP) ? "BIP" : "RANDOM"));
     if (g_l3)
-        fprintf(fp, "L3: %s\n", g_l3->policy == POLICY_LRU ? "LRU" : (g_l3->policy == POLICY_BIP ? "BIP" : "RANDOM"));
+        fprintf(fp, "L3: %s\n", (g_l3->policy == POLICY_LRU) ? "LRU" : ((g_l3->policy == POLICY_BIP) ? "BIP" : "RANDOM"));
     if (g_l4)
-        fprintf(fp, "L4: %s\n", g_l4->policy == POLICY_LRU ? "LRU" : (g_l4->policy == POLICY_BIP ? "BIP" : "RANDOM"));
+        fprintf(fp, "L4: %s\n", (g_l4->policy == POLICY_LRU) ? "LRU" : ((g_l4->policy == POLICY_BIP) ? "BIP" : "RANDOM"));
     
     fclose(fp);
     g_counting = 0;
@@ -229,7 +360,6 @@ void deinit(void) {
 }
 
 /* ---------------- Base Cache Access Simulation ---------------- */
-
 int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_type) {
     if (!g_counting) return 0;  // Simulator inactive.
     g_current_time++;
@@ -374,7 +504,7 @@ int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_ty
     }
     
     /* Main Memory Access */
-    latency += MEM_LATENCY;
+    latency += g_config.mem_latency;
     if (g_l4 != NULL) {
         int l4_set_index = (paddr / g_l4->line_size) % g_l4->num_sets;
         unsigned int l4_tag = paddr / (g_l4->line_size * g_l4->num_sets);
@@ -469,7 +599,6 @@ int simulate_prefetch(unsigned int vaddr, unsigned int paddr, int access_type) {
 }
 
 /* ---------------- Cache Maintenance ---------------- */
-
 static void flush_cache_line(CacheLevel *cache, unsigned int paddr) {
     if (cache == NULL)
         return;
@@ -485,7 +614,7 @@ static void flush_cache_line(CacheLevel *cache, unsigned int paddr) {
 }
 
 void flush_instruction(unsigned int paddr) {
-    if (!g_counting) return;  // Simulator inactive.
+    if (!g_counting) return;
     flush_cache_line(g_l1_instr, paddr);
     flush_cache_line(g_l2, paddr);
     flush_cache_line(g_l3, paddr);
@@ -540,7 +669,6 @@ void invalidate_all(void) {
 }
 
 /* ---------------- Helper Function for Prefetch ---------------- */
-
 static void prefetch_into_cache(CacheLevel *cache, unsigned int paddr) {
     if (cache == NULL) return;
     int set_index = (paddr / cache->line_size) % cache->num_sets;
@@ -557,7 +685,6 @@ static void prefetch_into_cache(CacheLevel *cache, unsigned int paddr) {
 }
 
 /* ---------------- New Prefetch Instruction Implementations ---------------- */
-
 int simulate_prefetch_t0(unsigned int vaddr, unsigned int paddr, int access_type) {
     if (!g_counting) return 0;
     g_current_time++;
@@ -618,22 +745,21 @@ int simulate_prefetch_t2(unsigned int vaddr, unsigned int paddr, int access_type
         prefetch_into_cache(g_l3, paddr);
         latency += g_l3->access_latency;
     } else {
-        latency += MEM_LATENCY;
+        latency += g_config.mem_latency;
     }
     return latency;
 }
 
 int simulate_prefetch_nta(unsigned int vaddr, unsigned int paddr, int access_type) {
-    if (!g_counting) return MEM_LATENCY;
+    if (!g_counting) return g_config.mem_latency;
     g_current_time++;
-    return MEM_LATENCY;
+    return g_config.mem_latency;
 }
 
 int simulate_prefetch_w(unsigned int vaddr, unsigned int paddr, int access_type) {
     if (!g_counting) return 0;
     g_current_time++;
     int latency = 0;
-    /* PREFETCHW is intended for data accesses */
     if (access_type != 0)
         return 0;
     if (g_l1_data) {

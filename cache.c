@@ -110,7 +110,7 @@ void free_cache_level(CacheLevel *cache) {
 /*
  * init_cache_simulator() registers the cache levels with the simulator.
  */
-void init_cache_simulator(CacheLevel *l1_data, CacheLevel *l1_instr, CacheLevel *l2, CacheLevel *l3, CacheLevel *l4) {
+static void init_cache_simulator(CacheLevel *l1_data, CacheLevel *l1_instr, CacheLevel *l2, CacheLevel *l3, CacheLevel *l4) {
     g_l1_data   = l1_data;
     g_l1_instr  = l1_instr;
     g_l2        = l2;
@@ -126,7 +126,7 @@ void init_cache_simulator(CacheLevel *l1_data, CacheLevel *l1_instr, CacheLevel 
  *   Instantiates the cache levels using hard-coded configuration and registers them.
  *   This does not start simulation counting.
  */
-void init() {
+void init(void) {
     int use_l1 = 1;      // Instantiate L1 caches (data and instruction)
     int use_l2 = 1;
     int use_l3 = 1;
@@ -176,7 +176,7 @@ void init() {
  * start()
  *   Resets simulation counters and starts counting memory accesses.
  */
-void start() {
+void start(void) {
     g_mem_accesses = 0;
     g_instr_accesses = 0;
     g_data_accesses = 0;
@@ -190,7 +190,7 @@ void start() {
  * end()
  *   Stops counting and writes simulation statistics to "results.log".
  */
-void end() {
+void end(void) {
     FILE *fp = fopen("results.log", "w");
     if (!fp) {
         perror("fopen");
@@ -216,7 +216,7 @@ void end() {
  * close()
  *   Frees all allocated cache memory and performs final cleanup.
  */
-void close() {
+void close(void) {
     if (g_l1_data) { free_cache_level(g_l1_data); g_l1_data = NULL; }
     if (g_l1_instr) { free_cache_level(g_l1_instr); g_l1_instr = NULL; }
     if (g_l2) { free_cache_level(g_l2); g_l2 = NULL; }

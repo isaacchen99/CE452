@@ -73,10 +73,10 @@ void start(void);
 void end(void);
 
 /*
- * close()
+ * deinit()
  *   Frees all allocated cache memory and performs final cleanup.
  */
-void close(void);
+void deinit(void);
 
 /*
  * simulate_memory_access()

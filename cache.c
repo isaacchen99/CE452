@@ -6,42 +6,38 @@
 /* ---------------- Internal Global Variables ---------------- */
 
 /* Pointers to the cache levels */
-static CacheLevel *g_l1_data = NULL;
-static CacheLevel *g_l1_instr = NULL;
-static CacheLevel *g_l2 = NULL;
-static CacheLevel *g_l3 = NULL;
-static CacheLevel *g_l4 = NULL;
+CacheLevel *g_l1_data = NULL;
+CacheLevel *g_l1_instr = NULL;
+CacheLevel *g_l2 = NULL;
+CacheLevel *g_l3 = NULL;
+CacheLevel *g_l4 = NULL;
 
 /* Global internal time counter */
-static unsigned long g_current_time = 0;
+unsigned long g_current_time = 0;
 
 /* Global simulation counters */
-static int g_mem_accesses = 0;
-static int g_instr_accesses = 0;
-static int g_data_accesses = 0;
-static unsigned long g_total_latency_instr = 0;
-static unsigned long g_total_latency_data = 0;
+int g_mem_accesses = 0;
+int g_instr_accesses = 0;
+int g_data_accesses = 0;
+unsigned long g_total_latency_instr = 0;
+unsigned long g_total_latency_data = 0;
 
 /* Flag to indicate whether simulation counting is active */
-static int g_counting = 0;
+int g_counting = 0;
 
 /* ---------------- Cache Miss/Hit Statistics Counters ---------------- */
-/* For L1, separate for instruction and data caches */
 static int l1_data_accesses_stats = 0, l1_data_hits_stats = 0;
 static int l1_instr_accesses_stats = 0, l1_instr_hits_stats = 0;
-/* For lower levels */
 static int l2_accesses_stats = 0, l2_hits_stats = 0;
 static int l3_accesses_stats = 0, l3_hits_stats = 0;
 static int l4_accesses_stats = 0, l4_hits_stats = 0;
 
 /* ---------------- Replacement Policy Implementations ---------------- */
 
-/* LRU: update simply records the current internal time */
 void update_policy_lru(CacheSet *set, int line_index) {
     set->lines[line_index].last_access_time = g_current_time;
 }
 
-/* LRU: victim is the line with the smallest last_access_time */
 int find_victim_lru(CacheSet *set) {
     int victim = 0;
     unsigned long min_time = set->lines[0].last_access_time;
@@ -54,12 +50,10 @@ int find_victim_lru(CacheSet *set) {
     return victim;
 }
 
-/* Simple BIP update: update with half the internal time */
 void update_policy_bip(CacheSet *set, int line_index) {
     set->lines[line_index].last_access_time = g_current_time / 2;
 }
 
-/* Use the same victim selection as LRU */
 int find_victim_bip(CacheSet *set) {
     return find_victim_lru(set);
 }
@@ -219,6 +213,7 @@ void deinit(void) {
 /* ---------------- Base Cache Access Simulation ---------------- */
 
 int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_type) {
+    if (!g_counting) return 0;  // Simulator inactive.
     g_current_time++;
     int latency = 0;
     
@@ -415,6 +410,7 @@ DONE:
 }
 
 int simulate_prefetch(unsigned int vaddr, unsigned int paddr, int access_type) {
+    if (!g_counting) return 0;  // Simulator inactive.
     g_current_time++;
     int latency = 0;
     CacheLevel *l1 = (access_type == 1 ? g_l1_instr : g_l1_data);
@@ -471,6 +467,7 @@ static void flush_cache_line(CacheLevel *cache, unsigned int paddr) {
 }
 
 void flush_instruction(unsigned int paddr) {
+    if (!g_counting) return;  // Simulator inactive.
     flush_cache_line(g_l1_instr, paddr);
     flush_cache_line(g_l2, paddr);
     flush_cache_line(g_l3, paddr);
@@ -478,6 +475,7 @@ void flush_instruction(unsigned int paddr) {
 }
 
 void flush_data(unsigned int paddr) {
+    if (!g_counting) return;
     flush_cache_line(g_l1_data, paddr);
     flush_cache_line(g_l2, paddr);
     flush_cache_line(g_l3, paddr);
@@ -485,58 +483,46 @@ void flush_data(unsigned int paddr) {
 }
 
 void invalidate(unsigned int paddr) {
-  if (g_l1_instr) {
-      flush_cache_line(g_l1_instr, paddr);
-  }
-  if (g_l1_data) {
-      flush_cache_line(g_l1_data, paddr);
-  }
-  if (g_l2) {
-      flush_cache_line(g_l2, paddr);
-  }
-  if (g_l3) {
-      flush_cache_line(g_l3, paddr);
-  }
-  if (g_l4) {
-      flush_cache_line(g_l4, paddr);
-  }
+    if (!g_counting) return;
+    if (g_l1_instr) { flush_cache_line(g_l1_instr, paddr); }
+    if (g_l1_data) { flush_cache_line(g_l1_data, paddr); }
+    if (g_l2)      { flush_cache_line(g_l2, paddr); }
+    if (g_l3)      { flush_cache_line(g_l3, paddr); }
+    if (g_l4)      { flush_cache_line(g_l4, paddr); }
 }
 
 void invalidate_all(void) {
-  int i, j;
-  if (g_l1_instr) {
-      for (i = 0; i < g_l1_instr->num_sets; i++)
-          for (j = 0; j < g_l1_instr->sets[i].num_lines; j++)
-              g_l1_instr->sets[i].lines[j].valid = 0;
-  }
-  if (g_l1_data) {
-      for (i = 0; i < g_l1_data->num_sets; i++)
-          for (j = 0; j < g_l1_data->sets[i].num_lines; j++)
-              g_l1_data->sets[i].lines[j].valid = 0;
-  }
-  if (g_l2) {
-      for (i = 0; i < g_l2->num_sets; i++)
-          for (j = 0; j < g_l2->sets[i].num_lines; j++)
-              g_l2->sets[i].lines[j].valid = 0;
-  }
-  if (g_l3) {
-      for (i = 0; i < g_l3->num_sets; i++)
-          for (j = 0; j < g_l3->sets[i].num_lines; j++)
-              g_l3->sets[i].lines[j].valid = 0;
-  }
-  if (g_l4) {
-      for (i = 0; i < g_l4->num_sets; i++)
-          for (j = 0; j < g_l4->sets[i].num_lines; j++)
-              g_l4->sets[i].lines[j].valid = 0;
-  }
+    if (!g_counting) return;
+    int i, j;
+    if (g_l1_instr) {
+        for (i = 0; i < g_l1_instr->num_sets; i++)
+            for (j = 0; j < g_l1_instr->sets[i].num_lines; j++)
+                g_l1_instr->sets[i].lines[j].valid = 0;
+    }
+    if (g_l1_data) {
+        for (i = 0; i < g_l1_data->num_sets; i++)
+            for (j = 0; j < g_l1_data->sets[i].num_lines; j++)
+                g_l1_data->sets[i].lines[j].valid = 0;
+    }
+    if (g_l2) {
+        for (i = 0; i < g_l2->num_sets; i++)
+            for (j = 0; j < g_l2->sets[i].num_lines; j++)
+                g_l2->sets[i].lines[j].valid = 0;
+    }
+    if (g_l3) {
+        for (i = 0; i < g_l3->num_sets; i++)
+            for (j = 0; j < g_l3->sets[i].num_lines; j++)
+                g_l3->sets[i].lines[j].valid = 0;
+    }
+    if (g_l4) {
+        for (i = 0; i < g_l4->num_sets; i++)
+            for (j = 0; j < g_l4->sets[i].num_lines; j++)
+                g_l4->sets[i].lines[j].valid = 0;
+    }
 }
 
 /* ---------------- Helper Function for Prefetch ---------------- */
 
-/*
- * prefetch_into_cache()
- *   Installs the block corresponding to paddr into the specified cache (if not already present).
- */
 static void prefetch_into_cache(CacheLevel *cache, unsigned int paddr) {
     if (cache == NULL) return;
     int set_index = (paddr / cache->line_size) % cache->num_sets;
@@ -554,8 +540,8 @@ static void prefetch_into_cache(CacheLevel *cache, unsigned int paddr) {
 
 /* ---------------- New Prefetch Instruction Implementations ---------------- */
 
-/* PREFETCHT0 – Prefetch into L1, L2, and L3 */
 int simulate_prefetch_t0(unsigned int vaddr, unsigned int paddr, int access_type) {
+    if (!g_counting) return 0;
     g_current_time++;
     int latency = 0;
     CacheLevel *l1 = (access_type == 1 ? g_l1_instr : g_l1_data);
@@ -591,8 +577,8 @@ int simulate_prefetch_t0(unsigned int vaddr, unsigned int paddr, int access_type
     return latency;
 }
 
-/* PREFETCHT1 – Prefetch into L2 and L3 only */
 int simulate_prefetch_t1(unsigned int vaddr, unsigned int paddr, int access_type) {
+    if (!g_counting) return 0;
     g_current_time++;
     int latency = 0;
     if (g_l2) {
@@ -606,8 +592,8 @@ int simulate_prefetch_t1(unsigned int vaddr, unsigned int paddr, int access_type
     return latency;
 }
 
-/* PREFETCHT2 – Prefetch into L3 only */
 int simulate_prefetch_t2(unsigned int vaddr, unsigned int paddr, int access_type) {
+    if (!g_counting) return 0;
     g_current_time++;
     int latency = 0;
     if (g_l3) {
@@ -619,14 +605,14 @@ int simulate_prefetch_t2(unsigned int vaddr, unsigned int paddr, int access_type
     return latency;
 }
 
-/* PREFETCHNTA – Non-temporal prefetch (bypasses caches) */
 int simulate_prefetch_nta(unsigned int vaddr, unsigned int paddr, int access_type) {
+    if (!g_counting) return MEM_LATENCY;
     g_current_time++;
     return MEM_LATENCY;
 }
 
-/* PREFETCHW – Prefetch for write (for data accesses) */
 int simulate_prefetch_w(unsigned int vaddr, unsigned int paddr, int access_type) {
+    if (!g_counting) return 0;
     g_current_time++;
     int latency = 0;
     /* PREFETCHW is intended for data accesses */

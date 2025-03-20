@@ -83,6 +83,10 @@ CacheLevel* init_cache_level(int cache_size, int associativity, int line_size, i
 void free_cache_level(CacheLevel *cache);
 
 /* ---------------- Simulator API ---------------- */
+/*
+ * Note: When the simulator is not active (i.e. before start() is called or after end() is called),
+ * these functions will disregard simulation activity.
+ */
 void init(void);
 void start(void);
 void end(void);
@@ -102,24 +106,18 @@ int simulate_prefetch_nta(unsigned int vaddr, unsigned int paddr, int access_typ
 int simulate_prefetch_w(unsigned int vaddr, unsigned int paddr, int access_type);
 
 /* ---------------- Internal Global Variables ---------------- */
-static CacheLevel *g_l1_data = NULL;
-static CacheLevel *g_l1_instr = NULL;
-static CacheLevel *g_l2 = NULL;
-static CacheLevel *g_l3 = NULL;
-static CacheLevel *g_l4 = NULL;
-static unsigned long g_current_time = 0;
-static int g_mem_accesses = 0;
-static int g_instr_accesses = 0;
-static int g_data_accesses = 0;
-static unsigned long g_total_latency_instr = 0;
-static unsigned long g_total_latency_data = 0;
-static int g_counting = 0;
-
-/* Cache miss/hit statistics */
-static int l1_data_accesses_stats = 0, l1_data_hits_stats = 0;
-static int l1_instr_accesses_stats = 0, l1_instr_hits_stats = 0;
-static int l2_accesses_stats = 0, l2_hits_stats = 0;
-static int l3_accesses_stats = 0, l3_hits_stats = 0;
-static int l4_accesses_stats = 0, l4_hits_stats = 0;
+extern CacheLevel *g_l1_data;
+extern CacheLevel *g_l1_instr;
+extern CacheLevel *g_l2;
+extern CacheLevel *g_l3;
+extern CacheLevel *g_l4;
+extern unsigned long g_current_time;
+extern int g_mem_accesses;
+extern int g_instr_accesses;
+extern int g_data_accesses;
+extern unsigned long g_total_latency_instr;
+extern unsigned long g_total_latency_data;
+/* g_counting indicates whether the simulator is active */
+extern int g_counting;
 
 #endif /* CACHE_H */

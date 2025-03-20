@@ -34,6 +34,7 @@ static int l4_accesses_stats = 0, l4_hits_stats = 0;
 
 /* ---------------- Replacement Policy Implementations ---------------- */
 
+/* LRU Implementation */
 void update_policy_lru(CacheSet *set, int line_index) {
     set->lines[line_index].last_access_time = g_current_time;
 }
@@ -50,12 +51,25 @@ int find_victim_lru(CacheSet *set) {
     return victim;
 }
 
+/* BIP Implementation */
 void update_policy_bip(CacheSet *set, int line_index) {
     set->lines[line_index].last_access_time = g_current_time / 2;
 }
 
 int find_victim_bip(CacheSet *set) {
     return find_victim_lru(set);
+}
+
+/* RANDOM Eviction Implementation */
+/* For RANDOM, we do not need to update any usage information */
+void update_policy_random(CacheSet *set, int line_index) {
+    /* No update needed for random eviction policy */
+    (void)set;  /* Suppress unused parameter warning */
+    (void)line_index;
+}
+
+int find_victim_random(CacheSet *set) {
+    return rand() % set->num_lines;
 }
 
 /* ---------------- Cache Level Initialization ---------------- */
@@ -91,6 +105,10 @@ CacheLevel* init_cache_level(int cache_size, int associativity, int line_size, i
         case POLICY_BIP:
             cache->update_policy = update_policy_bip;
             cache->find_victim = find_victim_bip;
+            break;
+        case POLICY_RANDOM:
+            cache->update_policy = update_policy_random;
+            cache->find_victim = find_victim_random;
             break;
         default:
             cache->update_policy = update_policy_lru;
@@ -184,19 +202,19 @@ void end(void) {
     if (l3_accesses_stats > 0)
         fprintf(fp, "L3: %.2f%% misses\n", 100.0 * (l3_accesses_stats - l3_hits_stats) / l3_accesses_stats);
     if (l4_accesses_stats > 0)
-        fprintf(fp, "L4: %.2f%% misses\n", 100.0 * (l4_accesses_stats - l4_hits_stats) / l4_accesses_stats);
+        fprintf(fp, "L4: %.2f%% misses\n", 100.0 * (l4_accesses_stats - l4_accesses_stats) / l4_accesses_stats);
     
     fprintf(fp, "\n--- Replacement Policy ---\n");
     if (g_l1_instr)
-        fprintf(fp, "L1 Instruction: %s\n", g_l1_instr->policy == POLICY_LRU ? "LRU" : "BIP");
+        fprintf(fp, "L1 Instruction: %s\n", g_l1_instr->policy == POLICY_LRU ? "LRU" : (g_l1_instr->policy == POLICY_BIP ? "BIP" : "RANDOM"));
     if (g_l1_data)
-        fprintf(fp, "L1 Data: %s\n", g_l1_data->policy == POLICY_LRU ? "LRU" : "BIP");
+        fprintf(fp, "L1 Data: %s\n", g_l1_data->policy == POLICY_LRU ? "LRU" : (g_l1_data->policy == POLICY_BIP ? "BIP" : "RANDOM"));
     if (g_l2)
-        fprintf(fp, "L2: %s\n", g_l2->policy == POLICY_LRU ? "LRU" : "BIP");
+        fprintf(fp, "L2: %s\n", g_l2->policy == POLICY_LRU ? "LRU" : (g_l2->policy == POLICY_BIP ? "BIP" : "RANDOM"));
     if (g_l3)
-        fprintf(fp, "L3: %s\n", g_l3->policy == POLICY_LRU ? "LRU" : "BIP");
+        fprintf(fp, "L3: %s\n", g_l3->policy == POLICY_LRU ? "LRU" : (g_l3->policy == POLICY_BIP ? "BIP" : "RANDOM"));
     if (g_l4)
-        fprintf(fp, "L4: %s\n", g_l4->policy == POLICY_LRU ? "LRU" : "BIP");
+        fprintf(fp, "L4: %s\n", g_l4->policy == POLICY_LRU ? "LRU" : (g_l4->policy == POLICY_BIP ? "BIP" : "RANDOM"));
     
     fclose(fp);
     g_counting = 0;

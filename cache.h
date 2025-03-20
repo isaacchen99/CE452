@@ -11,7 +11,7 @@
 #define USE_L1      1
 #define USE_L2      1
 #define USE_L3      1
-#define USE_L4      1
+#define USE_L4      0  /* Change to 1 to enable L4 */
 
 #define L1_SIZE     (32 * 1024)   // 32 KB for each L1 cache
 #define L1_ASSOC    8
@@ -23,12 +23,12 @@
 #define L2_LINE     64
 #define L2_LATENCY  10
 
-#define L3_SIZE     (512 * 1024)  // 512 KB
+#define L3_SIZE     (2048 * 1024)  // 2 MB
 #define L3_ASSOC    8
 #define L3_LINE     64
 #define L3_LATENCY  20
 
-#define L4_SIZE     (2 * 1024 * 1024) // 2 MB
+#define L4_SIZE     (0) // 0 MB
 #define L4_ASSOC    16
 #define L4_LINE     64
 #define L4_LATENCY  40
@@ -40,14 +40,15 @@
 /* Replacement Policy Enum */
 typedef enum {
     POLICY_LRU,
-    POLICY_BIP
+    POLICY_BIP,
+    POLICY_RANDOM
 } ReplacementPolicy;
 
 /* Cache Line */
 typedef struct {
     unsigned int tag;
     int valid;
-    unsigned long last_access_time;  // used for LRU/BIP
+    unsigned long last_access_time;  // used for LRU/BIP (not used for RANDOM)
 } CacheLine;
 
 /* Cache Set: contains an array of cache lines */
@@ -77,6 +78,9 @@ int find_victim_lru(CacheSet *set);
 
 void update_policy_bip(CacheSet *set, int line_index);
 int find_victim_bip(CacheSet *set);
+
+void update_policy_random(CacheSet *set, int line_index);
+int find_victim_random(CacheSet *set);
 
 /* ---------------- Cache Level Initialization ---------------- */
 CacheLevel* init_cache_level(int cache_size, int associativity, int line_size, int access_latency, ReplacementPolicy policy);

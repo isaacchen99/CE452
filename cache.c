@@ -118,9 +118,6 @@ void free_cache_level(CacheLevel *cache) {
 
 /* ---------------- Simulator Internal Registration ---------------- */
 
-/*
- * init_cache_simulator() registers the cache levels with the simulator.
- */
 static void init_cache_simulator(CacheLevel *l1_data, CacheLevel *l1_instr, CacheLevel *l2, CacheLevel *l3, CacheLevel *l4) {
     g_l1_data   = l1_data;
     g_l1_instr  = l1_instr;
@@ -132,61 +129,23 @@ static void init_cache_simulator(CacheLevel *l1_data, CacheLevel *l1_instr, Cach
 
 /* ---------------- Simulator API Functions ---------------- */
 
-/*
- * init()
- *   Instantiates the cache levels using hard-coded configuration and registers them.
- *   This does not start simulation counting.
- */
 void init(void) {
-    int use_l1 = 1;      // Instantiate L1 caches (data and instruction)
-    int use_l2 = 1;
-    int use_l3 = 1;
-    int use_l4 = 1;
-    
-    /* Hard-coded cache configuration parameters */
-    int l1_size = 32 * 1024;       // 32 KB for each L1 cache
-    int l1_assoc = 8;
-    int l1_line = 64;
-    int l1_latency = 1;
-    
-    int l2_size = 256 * 1024;      // 256 KB
-    int l2_assoc = 8;
-    int l2_line = 64;
-    int l2_latency = 10;
-    
-    int l3_size = 512 * 1024;      // 512 KB
-    int l3_assoc = 8;
-    int l3_line = 64;
-    int l3_latency = 20;
-    
-    int l4_size = 2 * 1024 * 1024; // 2 MB
-    int l4_assoc = 16;
-    int l4_line = 64;
-    int l4_latency = 40;
-    
-    /* Instantiate caches if enabled */
-    if (use_l1) {
-        g_l1_data = init_cache_level(l1_size, l1_assoc, l1_line, l1_latency, POLICY_LRU);
-        g_l1_instr = init_cache_level(l1_size, l1_assoc, l1_line, l1_latency, POLICY_LRU);
-    }
-    if (use_l2)
-        g_l2 = init_cache_level(l2_size, l2_assoc, l2_line, l2_latency, POLICY_LRU);
-    if (use_l3)
-        g_l3 = init_cache_level(l3_size, l3_assoc, l3_line, l3_latency, POLICY_LRU);
-    if (use_l4)
-        g_l4 = init_cache_level(l4_size, l4_assoc, l4_line, l4_latency, POLICY_LRU);
-    
-    /* Register the cache levels */
-    init_cache_simulator(g_l1_data, g_l1_instr, g_l2, g_l3, g_l4);
-    
-    /* Do not start counting yet */
-    g_counting = 0;
+  /* Instantiate caches using configuration macros */
+  if (USE_L1) {
+      g_l1_data = init_cache_level(L1_SIZE, L1_ASSOC, L1_LINE, L1_LATENCY, POLICY_LRU);
+      g_l1_instr = init_cache_level(L1_SIZE, L1_ASSOC, L1_LINE, L1_LATENCY, POLICY_LRU);
+  }
+  if (USE_L2)
+      g_l2 = init_cache_level(L2_SIZE, L2_ASSOC, L2_LINE, L2_LATENCY, POLICY_LRU);
+  if (USE_L3)
+      g_l3 = init_cache_level(L3_SIZE, L3_ASSOC, L3_LINE, L3_LATENCY, POLICY_LRU);
+  if (USE_L4)
+      g_l4 = init_cache_level(L4_SIZE, L4_ASSOC, L4_LINE, L4_LATENCY, POLICY_LRU);
+  
+  init_cache_simulator(g_l1_data, g_l1_instr, g_l2, g_l3, g_l4);
+  g_counting = 0;
 }
 
-/*
- * start()
- *   Resets simulation counters and starts counting memory accesses.
- */
 void start(void) {
     g_mem_accesses = 0;
     g_instr_accesses = 0;
@@ -196,7 +155,6 @@ void start(void) {
     g_current_time = 0;
     g_counting = 1;
 
-    /* Reset cache miss/hit statistics */
     l1_data_accesses_stats = l1_data_hits_stats = 0;
     l1_instr_accesses_stats = l1_instr_hits_stats = 0;
     l2_accesses_stats = l2_hits_stats = 0;
@@ -204,10 +162,6 @@ void start(void) {
     l4_accesses_stats = l4_hits_stats = 0;
 }
 
-/*
- * end()
- *   Stops counting and writes simulation statistics to "results.log".
- */
 void end(void) {
     FILE *fp = fopen("results.log", "a");
     if (!fp) {
@@ -226,7 +180,6 @@ void end(void) {
     else
         fprintf(fp, "Data accesses: none\n");
 
-    /* Print cache miss rate per level */
     fprintf(fp, "\n--- Cache Miss Rates ---\n");
     if (l1_instr_accesses_stats > 0)
         fprintf(fp, "L1 Instruction: %.2f%% misses\n", 100.0 * (l1_instr_accesses_stats - l1_instr_hits_stats) / l1_instr_accesses_stats);
@@ -239,7 +192,6 @@ void end(void) {
     if (l4_accesses_stats > 0)
         fprintf(fp, "L4: %.2f%% misses\n", 100.0 * (l4_accesses_stats - l4_hits_stats) / l4_accesses_stats);
     
-    /* Print replacement policy for each cache level */
     fprintf(fp, "\n--- Replacement Policy ---\n");
     if (g_l1_instr)
         fprintf(fp, "L1 Instruction: %s\n", g_l1_instr->policy == POLICY_LRU ? "LRU" : "BIP");
@@ -253,14 +205,9 @@ void end(void) {
         fprintf(fp, "L4: %s\n", g_l4->policy == POLICY_LRU ? "LRU" : "BIP");
     
     fclose(fp);
-    
     g_counting = 0;
 }
 
-/*
- * deinit()
- *   Frees all allocated cache memory and performs final cleanup.
- */
 void deinit(void) {
     if (g_l1_data) { free_cache_level(g_l1_data); g_l1_data = NULL; }
     if (g_l1_instr) { free_cache_level(g_l1_instr); g_l1_instr = NULL; }
@@ -269,22 +216,12 @@ void deinit(void) {
     if (g_l4) { free_cache_level(g_l4); g_l4 = NULL; }
 }
 
-/* ---------------- Extended Cache Access Simulation ---------------- */
+/* ---------------- Base Cache Access Simulation ---------------- */
 
-/*
- * simulate_memory_access()
- *   Simulates a memory access.
- *   Parameters:
- *     - vaddr: virtual address (used for tagging)
- *     - paddr: physical address (used for lookup)
- *     - access_type: use 1 for instruction access (instruction cache), 0 for data access.
- *   Returns the total latency (in cycles).
- */
 int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_type) {
     g_current_time++;
     int latency = 0;
     
-    /* Select the appropriate L1 cache */
     CacheLevel *l1 = (access_type == 1 ? g_l1_instr : g_l1_data);
     
     /* L1 Check */
@@ -293,7 +230,6 @@ int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_ty
         unsigned int l1_tag = paddr / (l1->line_size * l1->num_sets);
         CacheSet *l1_set = &l1->sets[l1_set_index];
         
-        /* Update L1 access counters */
         if (access_type == 1)
             l1_instr_accesses_stats++;
         else
@@ -303,17 +239,14 @@ int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_ty
             if (l1_set->lines[i].valid && l1_set->lines[i].tag == l1_tag) {
                 l1->update_policy(l1_set, i);
                 latency += l1->access_latency;
-                
-                /* Record a hit */
                 if (access_type == 1)
                     l1_instr_hits_stats++;
                 else
                     l1_data_hits_stats++;
-                
                 goto DONE;
             }
         }
-        latency += l1->access_latency;  // L1 miss penalty.
+        latency += l1->access_latency;
     }
     
     /* L2 Check */
@@ -467,7 +400,6 @@ int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_ty
     }
     
 DONE:
-    /* Update simulation counters only if counting is active */
     if (g_counting) {
         if (access_type == 1) {
             g_total_latency_instr += latency;
@@ -482,13 +414,6 @@ DONE:
     return latency;
 }
 
-/*
- * simulate_prefetch()
- *   Works similarly to simulate_memory_access() but only inserts a block into the L1 cache.
- *   Use the same access_type flag (1 for instruction, 0 for data).
- *
- * Returns the latency incurred by the prefetch.
- */
 int simulate_prefetch(unsigned int vaddr, unsigned int paddr, int access_type) {
     g_current_time++;
     int latency = 0;
@@ -501,18 +426,16 @@ int simulate_prefetch(unsigned int vaddr, unsigned int paddr, int access_type) {
     CacheSet *l1_set = &l1->sets[l1_set_index];
     
     for (int i = 0; i < l1_set->num_lines; i++) {
-        if (l1_set->lines[i].valid && l1_set->lines[i].tag == l1_tag) {
+        if (l1_set->lines[i].valid && l1_set->lines[i].tag == l1_tag)
             return 0;  // Already present.
-        }
     }
     
     if (g_l2 != NULL) {
         int l2_set_index = (paddr / g_l2->line_size) % g_l2->num_sets;
-        unsigned int l2_tag = paddr / (g_l2->line_size * g_l2->num_sets);
         CacheSet *l2_set = &g_l2->sets[l2_set_index];
         int hit_in_l2 = 0;
         for (int i = 0; i < l2_set->num_lines; i++) {
-            if (l2_set->lines[i].valid && l2_set->lines[i].tag == l2_tag) {
+            if (l2_set->lines[i].valid && l2_set->lines[i].tag == (paddr / (g_l2->line_size * g_l2->num_sets))) {
                 g_l2->update_policy(l2_set, i);
                 latency += g_l2->access_latency;
                 hit_in_l2 = 1;
@@ -559,4 +482,176 @@ void flush_data(unsigned int paddr) {
     flush_cache_line(g_l2, paddr);
     flush_cache_line(g_l3, paddr);
     flush_cache_line(g_l4, paddr);
+}
+
+void invalidate(unsigned int paddr) {
+  if (g_l1_instr) {
+      flush_cache_line(g_l1_instr, paddr);
+  }
+  if (g_l1_data) {
+      flush_cache_line(g_l1_data, paddr);
+  }
+  if (g_l2) {
+      flush_cache_line(g_l2, paddr);
+  }
+  if (g_l3) {
+      flush_cache_line(g_l3, paddr);
+  }
+  if (g_l4) {
+      flush_cache_line(g_l4, paddr);
+  }
+}
+
+void invalidate_all(void) {
+  int i, j;
+  if (g_l1_instr) {
+      for (i = 0; i < g_l1_instr->num_sets; i++)
+          for (j = 0; j < g_l1_instr->sets[i].num_lines; j++)
+              g_l1_instr->sets[i].lines[j].valid = 0;
+  }
+  if (g_l1_data) {
+      for (i = 0; i < g_l1_data->num_sets; i++)
+          for (j = 0; j < g_l1_data->sets[i].num_lines; j++)
+              g_l1_data->sets[i].lines[j].valid = 0;
+  }
+  if (g_l2) {
+      for (i = 0; i < g_l2->num_sets; i++)
+          for (j = 0; j < g_l2->sets[i].num_lines; j++)
+              g_l2->sets[i].lines[j].valid = 0;
+  }
+  if (g_l3) {
+      for (i = 0; i < g_l3->num_sets; i++)
+          for (j = 0; j < g_l3->sets[i].num_lines; j++)
+              g_l3->sets[i].lines[j].valid = 0;
+  }
+  if (g_l4) {
+      for (i = 0; i < g_l4->num_sets; i++)
+          for (j = 0; j < g_l4->sets[i].num_lines; j++)
+              g_l4->sets[i].lines[j].valid = 0;
+  }
+}
+
+/* ---------------- Helper Function for Prefetch ---------------- */
+
+/*
+ * prefetch_into_cache()
+ *   Installs the block corresponding to paddr into the specified cache (if not already present).
+ */
+static void prefetch_into_cache(CacheLevel *cache, unsigned int paddr) {
+    if (cache == NULL) return;
+    int set_index = (paddr / cache->line_size) % cache->num_sets;
+    unsigned int tag = paddr / (cache->line_size * cache->num_sets);
+    CacheSet *set = &cache->sets[set_index];
+    for (int i = 0; i < set->num_lines; i++) {
+        if (set->lines[i].valid && set->lines[i].tag == tag)
+            return; // Already present.
+    }
+    int victim = cache->find_victim(set);
+    set->lines[victim].tag = tag;
+    set->lines[victim].valid = 1;
+    set->lines[victim].last_access_time = g_current_time;
+}
+
+/* ---------------- New Prefetch Instruction Implementations ---------------- */
+
+/* PREFETCHT0 – Prefetch into L1, L2, and L3 */
+int simulate_prefetch_t0(unsigned int vaddr, unsigned int paddr, int access_type) {
+    g_current_time++;
+    int latency = 0;
+    CacheLevel *l1 = (access_type == 1 ? g_l1_instr : g_l1_data);
+    if (l1) {
+        int set_index = (paddr / l1->line_size) % l1->num_sets;
+        unsigned int tag = paddr / (l1->line_size * l1->num_sets);
+        CacheSet *set = &l1->sets[set_index];
+        int found = 0;
+        for (int i = 0; i < set->num_lines; i++) {
+            if (set->lines[i].valid && set->lines[i].tag == tag) {
+                found = 1;
+                break;
+            }
+        }
+        if (!found) {
+            int victim = l1->find_victim(set);
+            set->lines[victim].tag = tag;
+            set->lines[victim].valid = 1;
+            set->lines[victim].last_access_time = g_current_time;
+            latency += l1->access_latency;
+        } else {
+            latency += l1->access_latency;
+        }
+    }
+    if (g_l2) {
+        prefetch_into_cache(g_l2, paddr);
+        latency += g_l2->access_latency;
+    }
+    if (g_l3) {
+        prefetch_into_cache(g_l3, paddr);
+        latency += g_l3->access_latency;
+    }
+    return latency;
+}
+
+/* PREFETCHT1 – Prefetch into L2 and L3 only */
+int simulate_prefetch_t1(unsigned int vaddr, unsigned int paddr, int access_type) {
+    g_current_time++;
+    int latency = 0;
+    if (g_l2) {
+        prefetch_into_cache(g_l2, paddr);
+        latency += g_l2->access_latency;
+    }
+    if (g_l3) {
+        prefetch_into_cache(g_l3, paddr);
+        latency += g_l3->access_latency;
+    }
+    return latency;
+}
+
+/* PREFETCHT2 – Prefetch into L3 only */
+int simulate_prefetch_t2(unsigned int vaddr, unsigned int paddr, int access_type) {
+    g_current_time++;
+    int latency = 0;
+    if (g_l3) {
+        prefetch_into_cache(g_l3, paddr);
+        latency += g_l3->access_latency;
+    } else {
+        latency += MEM_LATENCY;
+    }
+    return latency;
+}
+
+/* PREFETCHNTA – Non-temporal prefetch (bypasses caches) */
+int simulate_prefetch_nta(unsigned int vaddr, unsigned int paddr, int access_type) {
+    g_current_time++;
+    return MEM_LATENCY;
+}
+
+/* PREFETCHW – Prefetch for write (for data accesses) */
+int simulate_prefetch_w(unsigned int vaddr, unsigned int paddr, int access_type) {
+    g_current_time++;
+    int latency = 0;
+    /* PREFETCHW is intended for data accesses */
+    if (access_type != 0)
+        return 0;
+    if (g_l1_data) {
+        int set_index = (paddr / g_l1_data->line_size) % g_l1_data->num_sets;
+        unsigned int tag = paddr / (g_l1_data->line_size * g_l1_data->num_sets);
+        CacheSet *set = &g_l1_data->sets[set_index];
+        int found = 0;
+        for (int i = 0; i < set->num_lines; i++) {
+            if (set->lines[i].valid && set->lines[i].tag == tag) {
+                found = 1;
+                break;
+            }
+        }
+        if (!found) {
+            int victim = g_l1_data->find_victim(set);
+            set->lines[victim].tag = tag;
+            set->lines[victim].valid = 1;
+            set->lines[victim].last_access_time = g_current_time;
+            latency += g_l1_data->access_latency;
+        } else {
+            latency += g_l1_data->access_latency;
+        }
+    }
+    return latency;
 }

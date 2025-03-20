@@ -1,31 +1,62 @@
-#ifndef CACHE_SIMULATOR_H
-#define CACHE_SIMULATOR_H
+#ifndef CACHE_H
+#define CACHE_H
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <limits.h>
 
-#define MEM_LATENCY 100  // main memory penalty in cycles
+/* ---------------- Configuration Macros ---------------- */
 
-/* ---------------- Replacement Policy Definitions ---------------- */
+#define USE_L1      1
+#define USE_L2      1
+#define USE_L3      1
+#define USE_L4      1
 
+#define L1_SIZE     (32 * 1024)   // 32 KB for each L1 cache
+#define L1_ASSOC    8
+#define L1_LINE     64
+#define L1_LATENCY  1
+
+#define L2_SIZE     (256 * 1024)  // 256 KB
+#define L2_ASSOC    8
+#define L2_LINE     64
+#define L2_LATENCY  10
+
+#define L3_SIZE     (512 * 1024)  // 512 KB
+#define L3_ASSOC    8
+#define L3_LINE     64
+#define L3_LATENCY  20
+
+#define L4_SIZE     (2 * 1024 * 1024) // 2 MB
+#define L4_ASSOC    16
+#define L4_LINE     64
+#define L4_LATENCY  40
+
+#define MEM_LATENCY 100
+
+/* ---------------- Type Definitions ---------------- */
+
+/* Replacement Policy Enum */
 typedef enum {
     POLICY_LRU,
     POLICY_BIP
 } ReplacementPolicy;
 
+/* Cache Line */
 typedef struct {
     unsigned int tag;
     int valid;
     unsigned long last_access_time;  // used for LRU/BIP
 } CacheLine;
 
+/* Cache Set: contains an array of cache lines */
 typedef struct {
     int num_lines;         // equals associativity
     CacheLine *lines;      // dynamically allocated array of cache lines
 } CacheSet;
 
+/* Cache Level structure */
 typedef struct CacheLevel {
     int cache_size;        // in bytes
     int associativity;     // number of lines per set
@@ -35,7 +66,7 @@ typedef struct CacheLevel {
     ReplacementPolicy policy;
     CacheSet *sets;        // array of sets
 
-    // Function pointers for replacement policy operations:
+    /* Function pointers for replacement policy operations */
     void (*update_policy)(CacheSet *set, int line_index);
     int (*find_victim)(CacheSet *set);
 } CacheLevel;
@@ -52,68 +83,43 @@ CacheLevel* init_cache_level(int cache_size, int associativity, int line_size, i
 void free_cache_level(CacheLevel *cache);
 
 /* ---------------- Simulator API ---------------- */
-/*
- * init()
- *   Instantiates the cache levels using hard-coded parameters and registers them.
- *   (This does not start counting simulation data.)
- */
 void init(void);
-
-/*
- * start()
- *   Resets internal simulation counters (number of accesses and latency totals)
- *   and begins counting data.
- */
 void start(void);
-
-/*
- * end()
- *   Stops the simulation (i.e. stops counting) and writes a report to "results.log".
- *   The report now includes cache miss rates per level and the replacement policies used.
- */
 void end(void);
-
-/*
- * deinit()
- *   Frees all allocated cache memory and performs final cleanup.
- */
 void deinit(void);
-
-/*
- * simulate_memory_access()
- *   Simulates a memory access.
- *
- * Parameters:
- *   - vaddr: virtual address (used for tagging, etc.)
- *   - paddr: physical address (used for cache lookup)
- *   - access_type: use 1 for an instruction access (instruction cache), 0 for a data access.
- *
- * Returns the total latency (in cycles) incurred by the access.
- * (Global counters are updated only if the simulation is active.)
- */
 int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_type);
-
-/*
- * simulate_prefetch()
- *   Works similarly to simulate_memory_access() but only inserts a block into the L1 cache.
- *   Use the same access_type flag (1 for instruction, 0 for data).
- *
- * Returns the latency incurred by the prefetch.
- */
 int simulate_prefetch(unsigned int vaddr, unsigned int paddr, int access_type);
-
-/*
- * flush_instruction()
- *   Flushes (invalidates) the cache line corresponding to the given physical address
- *   from the instruction cache (if present) and from lower levels.
- */
 void flush_instruction(unsigned int paddr);
-
-/*
- * flush_data()
- *   Flushes (invalidates) the cache line corresponding to the given physical address
- *   from the data cache (if present) and from lower levels.
- */
 void flush_data(unsigned int paddr);
+void invalidate(unsigned int paddr);
+void invalidate_all(void);
 
-#endif /* CACHE_SIMULATOR_H */
+/* ---------------- New Prefetch Functions ---------------- */
+int simulate_prefetch_t0(unsigned int vaddr, unsigned int paddr, int access_type);
+int simulate_prefetch_t1(unsigned int vaddr, unsigned int paddr, int access_type);
+int simulate_prefetch_t2(unsigned int vaddr, unsigned int paddr, int access_type);
+int simulate_prefetch_nta(unsigned int vaddr, unsigned int paddr, int access_type);
+int simulate_prefetch_w(unsigned int vaddr, unsigned int paddr, int access_type);
+
+/* ---------------- Internal Global Variables ---------------- */
+static CacheLevel *g_l1_data = NULL;
+static CacheLevel *g_l1_instr = NULL;
+static CacheLevel *g_l2 = NULL;
+static CacheLevel *g_l3 = NULL;
+static CacheLevel *g_l4 = NULL;
+static unsigned long g_current_time = 0;
+static int g_mem_accesses = 0;
+static int g_instr_accesses = 0;
+static int g_data_accesses = 0;
+static unsigned long g_total_latency_instr = 0;
+static unsigned long g_total_latency_data = 0;
+static int g_counting = 0;
+
+/* Cache miss/hit statistics */
+static int l1_data_accesses_stats = 0, l1_data_hits_stats = 0;
+static int l1_instr_accesses_stats = 0, l1_instr_hits_stats = 0;
+static int l2_accesses_stats = 0, l2_hits_stats = 0;
+static int l3_accesses_stats = 0, l3_hits_stats = 0;
+static int l4_accesses_stats = 0, l4_hits_stats = 0;
+
+#endif /* CACHE_H */

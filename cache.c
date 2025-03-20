@@ -1,5 +1,7 @@
 #include "cache.h"
 #include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 /* ---------------- Internal Global Variables ---------------- */
 
@@ -22,6 +24,15 @@ static unsigned long g_total_latency_data = 0;
 
 /* Flag to indicate whether simulation counting is active */
 static int g_counting = 0;
+
+/* ---------------- Cache Miss/Hit Statistics Counters ---------------- */
+/* For L1, separate for instruction and data caches */
+static int l1_data_accesses_stats = 0, l1_data_hits_stats = 0;
+static int l1_instr_accesses_stats = 0, l1_instr_hits_stats = 0;
+/* For lower levels */
+static int l2_accesses_stats = 0, l2_hits_stats = 0;
+static int l3_accesses_stats = 0, l3_hits_stats = 0;
+static int l4_accesses_stats = 0, l4_hits_stats = 0;
 
 /* ---------------- Replacement Policy Implementations ---------------- */
 
@@ -184,6 +195,13 @@ void start(void) {
     g_total_latency_data = 0;
     g_current_time = 0;
     g_counting = 1;
+
+    /* Reset cache miss/hit statistics */
+    l1_data_accesses_stats = l1_data_hits_stats = 0;
+    l1_instr_accesses_stats = l1_instr_hits_stats = 0;
+    l2_accesses_stats = l2_hits_stats = 0;
+    l3_accesses_stats = l3_hits_stats = 0;
+    l4_accesses_stats = l4_hits_stats = 0;
 }
 
 /*
@@ -191,7 +209,7 @@ void start(void) {
  *   Stops counting and writes simulation statistics to "results.log".
  */
 void end(void) {
-    FILE *fp = fopen("results.log", "w");
+    FILE *fp = fopen("results.log", "a");
     if (!fp) {
         perror("fopen");
         exit(1);
@@ -207,6 +225,33 @@ void end(void) {
         fprintf(fp, "Data accesses: average latency = %.2f cycles\n", (double)g_total_latency_data / g_data_accesses);
     else
         fprintf(fp, "Data accesses: none\n");
+
+    /* Print cache miss rate per level */
+    fprintf(fp, "\n--- Cache Miss Rates ---\n");
+    if (l1_instr_accesses_stats > 0)
+        fprintf(fp, "L1 Instruction: %.2f%% misses\n", 100.0 * (l1_instr_accesses_stats - l1_instr_hits_stats) / l1_instr_accesses_stats);
+    if (l1_data_accesses_stats > 0)
+        fprintf(fp, "L1 Data: %.2f%% misses\n", 100.0 * (l1_data_accesses_stats - l1_data_hits_stats) / l1_data_accesses_stats);
+    if (l2_accesses_stats > 0)
+        fprintf(fp, "L2: %.2f%% misses\n", 100.0 * (l2_accesses_stats - l2_hits_stats) / l2_accesses_stats);
+    if (l3_accesses_stats > 0)
+        fprintf(fp, "L3: %.2f%% misses\n", 100.0 * (l3_accesses_stats - l3_hits_stats) / l3_accesses_stats);
+    if (l4_accesses_stats > 0)
+        fprintf(fp, "L4: %.2f%% misses\n", 100.0 * (l4_accesses_stats - l4_hits_stats) / l4_accesses_stats);
+    
+    /* Print replacement policy for each cache level */
+    fprintf(fp, "\n--- Replacement Policy ---\n");
+    if (g_l1_instr)
+        fprintf(fp, "L1 Instruction: %s\n", g_l1_instr->policy == POLICY_LRU ? "LRU" : "BIP");
+    if (g_l1_data)
+        fprintf(fp, "L1 Data: %s\n", g_l1_data->policy == POLICY_LRU ? "LRU" : "BIP");
+    if (g_l2)
+        fprintf(fp, "L2: %s\n", g_l2->policy == POLICY_LRU ? "LRU" : "BIP");
+    if (g_l3)
+        fprintf(fp, "L3: %s\n", g_l3->policy == POLICY_LRU ? "LRU" : "BIP");
+    if (g_l4)
+        fprintf(fp, "L4: %s\n", g_l4->policy == POLICY_LRU ? "LRU" : "BIP");
+    
     fclose(fp);
     
     g_counting = 0;
@@ -238,7 +283,6 @@ void deinit(void) {
 int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_type) {
     g_current_time++;
     int latency = 0;
-    // int hit_level = 0;
     
     /* Select the appropriate L1 cache */
     CacheLevel *l1 = (access_type == 1 ? g_l1_instr : g_l1_data);
@@ -248,11 +292,24 @@ int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_ty
         int l1_set_index = (paddr / l1->line_size) % l1->num_sets;
         unsigned int l1_tag = paddr / (l1->line_size * l1->num_sets);
         CacheSet *l1_set = &l1->sets[l1_set_index];
+        
+        /* Update L1 access counters */
+        if (access_type == 1)
+            l1_instr_accesses_stats++;
+        else
+            l1_data_accesses_stats++;
+        
         for (int i = 0; i < l1_set->num_lines; i++) {
             if (l1_set->lines[i].valid && l1_set->lines[i].tag == l1_tag) {
                 l1->update_policy(l1_set, i);
                 latency += l1->access_latency;
-                // hit_level = 1;
+                
+                /* Record a hit */
+                if (access_type == 1)
+                    l1_instr_hits_stats++;
+                else
+                    l1_data_hits_stats++;
+                
                 goto DONE;
             }
         }
@@ -261,6 +318,7 @@ int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_ty
     
     /* L2 Check */
     if (g_l2 != NULL) {
+        l2_accesses_stats++;
         int l2_set_index = (paddr / g_l2->line_size) % g_l2->num_sets;
         unsigned int l2_tag = paddr / (g_l2->line_size * g_l2->num_sets);
         CacheSet *l2_set = &g_l2->sets[l2_set_index];
@@ -270,13 +328,13 @@ int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_ty
                 g_l2->update_policy(l2_set, i);
                 latency += g_l2->access_latency;
                 hit_in_l2 = 1;
+                l2_hits_stats++;
                 break;
             }
         }
         if (!hit_in_l2)
             latency += g_l2->access_latency;
         if (hit_in_l2) {
-            //hit_level = 2;
             if (l1 != NULL) {
                 int victim_l1 = l1->find_victim(&l1->sets[(paddr / l1->line_size) % l1->num_sets]);
                 CacheSet *l1_set = &l1->sets[(paddr / l1->line_size) % l1->num_sets];
@@ -290,6 +348,7 @@ int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_ty
     
     /* L3 Check */
     if (g_l3 != NULL) {
+        l3_accesses_stats++;
         int l3_set_index = (paddr / g_l3->line_size) % g_l3->num_sets;
         unsigned int l3_tag = paddr / (g_l3->line_size * g_l3->num_sets);
         CacheSet *l3_set = &g_l3->sets[l3_set_index];
@@ -299,13 +358,13 @@ int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_ty
                 g_l3->update_policy(l3_set, i);
                 latency += g_l3->access_latency;
                 hit_in_l3 = 1;
+                l3_hits_stats++;
                 break;
             }
         }
         if (!hit_in_l3)
             latency += g_l3->access_latency;
         if (hit_in_l3) {
-            //hit_level = 3;
             if (g_l2 != NULL) {
                 int victim_l2 = g_l2->find_victim(&g_l2->sets[(paddr / g_l2->line_size) % g_l2->num_sets]);
                 CacheSet *l2_set = &g_l2->sets[(paddr / g_l2->line_size) % g_l2->num_sets];
@@ -326,6 +385,7 @@ int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_ty
     
     /* L4 Check */
     if (g_l4 != NULL) {
+        l4_accesses_stats++;
         int l4_set_index = (paddr / g_l4->line_size) % g_l4->num_sets;
         unsigned int l4_tag = paddr / (g_l4->line_size * g_l4->num_sets);
         CacheSet *l4_set = &g_l4->sets[l4_set_index];
@@ -335,13 +395,13 @@ int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_ty
                 g_l4->update_policy(l4_set, i);
                 latency += g_l4->access_latency;
                 hit_in_l4 = 1;
+                l4_hits_stats++;
                 break;
             }
         }
         if (!hit_in_l4)
             latency += g_l4->access_latency;
         if (hit_in_l4) {
-            //hit_level = 4;
             if (g_l3 != NULL) {
                 int victim_l3 = g_l3->find_victim(&g_l3->sets[(paddr / g_l3->line_size) % g_l3->num_sets]);
                 CacheSet *l3_set = &g_l3->sets[(paddr / g_l3->line_size) % g_l3->num_sets];
@@ -369,7 +429,6 @@ int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_ty
     
     /* Main Memory Access */
     latency += MEM_LATENCY;
-    //hit_level = 0;
     if (g_l4 != NULL) {
         int l4_set_index = (paddr / g_l4->line_size) % g_l4->num_sets;
         unsigned int l4_tag = paddr / (g_l4->line_size * g_l4->num_sets);
@@ -423,11 +482,16 @@ DONE:
     return latency;
 }
 
+/*
+ * simulate_prefetch()
+ *   Works similarly to simulate_memory_access() but only inserts a block into the L1 cache.
+ *   Use the same access_type flag (1 for instruction, 0 for data).
+ *
+ * Returns the latency incurred by the prefetch.
+ */
 int simulate_prefetch(unsigned int vaddr, unsigned int paddr, int access_type) {
-    // For prefetch, only insert the block into the appropriate L1 cache.
     g_current_time++;
     int latency = 0;
-    //int hit_level = 0;
     CacheLevel *l1 = (access_type == 1 ? g_l1_instr : g_l1_data);
     if (l1 == NULL)
         return 0;
@@ -438,7 +502,6 @@ int simulate_prefetch(unsigned int vaddr, unsigned int paddr, int access_type) {
     
     for (int i = 0; i < l1_set->num_lines; i++) {
         if (l1_set->lines[i].valid && l1_set->lines[i].tag == l1_tag) {
-            //hit_level = 1;
             return 0;  // Already present.
         }
     }
@@ -453,7 +516,6 @@ int simulate_prefetch(unsigned int vaddr, unsigned int paddr, int access_type) {
                 g_l2->update_policy(l2_set, i);
                 latency += g_l2->access_latency;
                 hit_in_l2 = 1;
-                //hit_level = 2;
                 break;
             }
         }

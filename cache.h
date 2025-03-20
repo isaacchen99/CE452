@@ -69,6 +69,7 @@ void start(void);
 /*
  * end()
  *   Stops the simulation (i.e. stops counting) and writes a report to "results.log".
+ *   The report now includes cache miss rates per level and the replacement policies used.
  */
 void end(void);
 

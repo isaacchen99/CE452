@@ -5,25 +5,25 @@ USE_L3=1
 USE_L4=0
 
 # L1 Cache Configuration
-L1_SIZE=32768        # in bytes (32 KB)
-L1_ASSOC=1
+L1_SIZE=4096        # in bytes (4 KB)
+L1_ASSOC=4
 L1_LINE=64
 L1_LATENCY=1
-L1_POLICY=RANDOM
+L1_POLICY=LRU
 
 # L2 Cache Configuration
-L2_SIZE=262144       # in bytes (256 KB)
-L2_ASSOC=1
+L2_SIZE=32768       # in bytes (32 KB)
+L2_ASSOC=4
 L2_LINE=64
 L2_LATENCY=10
-L2_POLICY=RANDOM
+L2_POLICY=LRU
 
 # L3 Cache Configuration
-L3_SIZE=2097152      # in bytes (2 MB)
-L3_ASSOC=1
+L3_SIZE=131072      # in bytes (128 KB)
+L3_ASSOC=4
 L3_LINE=64
 L3_LATENCY=20
-L3_POLICY=RANDOM
+L3_POLICY=LRU
 
 # L4 Cache Configuration (disabled in this example)
 L4_SIZE=0

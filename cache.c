@@ -210,7 +210,7 @@ int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_ty
     int hit_level = 0;
     
     // Select the appropriate L1 cache.
-    CacheLevel *l1 = (access_type == -1 ? g_l1_instr : g_l1_data);
+    CacheLevel *l1 = (access_type == 1 ? g_l1_instr : g_l1_data);
     
     /* ---------------- L1 Check ---------------- */
     if (l1 != NULL) {
@@ -378,7 +378,7 @@ int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_ty
     
 DONE:
     /* Update simulation counters */
-    if (access_type == -1) {
+    if (access_type == 1) {
         g_total_latency_instr += latency;
         g_instr_accesses++;
     } else {
@@ -395,7 +395,7 @@ int simulate_prefetch(unsigned int vaddr, unsigned int paddr, int access_type) {
     g_current_time++;
     int latency = 0;
     int hit_level = 0;
-    CacheLevel *l1 = (access_type == -1 ? g_l1_instr : g_l1_data);
+    CacheLevel *l1 = (access_type == 1 ? g_l1_instr : g_l1_data);
     if (l1 == NULL)
         return 0;
     
@@ -493,7 +493,7 @@ int main() {
             if (scanf(" %x %x", &vaddr, &paddr) != 2)
                 break;
             if (op == 'I') {
-                int latency = simulate_memory_access(vaddr, paddr, -1);
+                int latency = simulate_memory_access(vaddr, paddr, 1);
                 printf("Instruction access at 0x%x: latency = %d cycles\n", paddr, latency);
             } else if (op == 'R') {
                 int latency = simulate_memory_access(vaddr, paddr, 0);
@@ -519,7 +519,7 @@ int main() {
                 if (scanf(" %c %x %x", &subtype, &vaddr, &paddr) != 3)
                     break;
                 if (subtype == 'I') {
-                    int latency = simulate_prefetch(vaddr, paddr, -1);
+                    int latency = simulate_prefetch(vaddr, paddr, 1);
                     printf("Prefetch (instruction) for address 0x%x: latency = %d cycles\n", paddr, latency);
                 } else if (subtype == 'D') {
                     int latency = simulate_prefetch(vaddr, paddr, 0);

@@ -238,7 +238,7 @@ void close(void) {
 int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_type) {
     g_current_time++;
     int latency = 0;
-    int hit_level = 0;
+    // int hit_level = 0;
     
     /* Select the appropriate L1 cache */
     CacheLevel *l1 = (access_type == 1 ? g_l1_instr : g_l1_data);
@@ -252,7 +252,7 @@ int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_ty
             if (l1_set->lines[i].valid && l1_set->lines[i].tag == l1_tag) {
                 l1->update_policy(l1_set, i);
                 latency += l1->access_latency;
-                hit_level = 1;
+                // hit_level = 1;
                 goto DONE;
             }
         }
@@ -276,7 +276,7 @@ int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_ty
         if (!hit_in_l2)
             latency += g_l2->access_latency;
         if (hit_in_l2) {
-            hit_level = 2;
+            //hit_level = 2;
             if (l1 != NULL) {
                 int victim_l1 = l1->find_victim(&l1->sets[(paddr / l1->line_size) % l1->num_sets]);
                 CacheSet *l1_set = &l1->sets[(paddr / l1->line_size) % l1->num_sets];
@@ -305,7 +305,7 @@ int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_ty
         if (!hit_in_l3)
             latency += g_l3->access_latency;
         if (hit_in_l3) {
-            hit_level = 3;
+            //hit_level = 3;
             if (g_l2 != NULL) {
                 int victim_l2 = g_l2->find_victim(&g_l2->sets[(paddr / g_l2->line_size) % g_l2->num_sets]);
                 CacheSet *l2_set = &g_l2->sets[(paddr / g_l2->line_size) % g_l2->num_sets];
@@ -341,7 +341,7 @@ int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_ty
         if (!hit_in_l4)
             latency += g_l4->access_latency;
         if (hit_in_l4) {
-            hit_level = 4;
+            //hit_level = 4;
             if (g_l3 != NULL) {
                 int victim_l3 = g_l3->find_victim(&g_l3->sets[(paddr / g_l3->line_size) % g_l3->num_sets]);
                 CacheSet *l3_set = &g_l3->sets[(paddr / g_l3->line_size) % g_l3->num_sets];
@@ -369,7 +369,7 @@ int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_ty
     
     /* Main Memory Access */
     latency += MEM_LATENCY;
-    hit_level = 0;
+    //hit_level = 0;
     if (g_l4 != NULL) {
         int l4_set_index = (paddr / g_l4->line_size) % g_l4->num_sets;
         unsigned int l4_tag = paddr / (g_l4->line_size * g_l4->num_sets);
@@ -427,7 +427,7 @@ int simulate_prefetch(unsigned int vaddr, unsigned int paddr, int access_type) {
     // For prefetch, only insert the block into the appropriate L1 cache.
     g_current_time++;
     int latency = 0;
-    int hit_level = 0;
+    //int hit_level = 0;
     CacheLevel *l1 = (access_type == 1 ? g_l1_instr : g_l1_data);
     if (l1 == NULL)
         return 0;
@@ -438,7 +438,7 @@ int simulate_prefetch(unsigned int vaddr, unsigned int paddr, int access_type) {
     
     for (int i = 0; i < l1_set->num_lines; i++) {
         if (l1_set->lines[i].valid && l1_set->lines[i].tag == l1_tag) {
-            hit_level = 1;
+            //hit_level = 1;
             return 0;  // Already present.
         }
     }
@@ -453,7 +453,7 @@ int simulate_prefetch(unsigned int vaddr, unsigned int paddr, int access_type) {
                 g_l2->update_policy(l2_set, i);
                 latency += g_l2->access_latency;
                 hit_in_l2 = 1;
-                hit_level = 2;
+                //hit_level = 2;
                 break;
             }
         }
@@ -471,7 +471,7 @@ int simulate_prefetch(unsigned int vaddr, unsigned int paddr, int access_type) {
 
 /* ---------------- Cache Maintenance ---------------- */
 
-void flush_cache_line(CacheLevel *cache, unsigned int paddr) {
+static void flush_cache_line(CacheLevel *cache, unsigned int paddr) {
     if (cache == NULL)
         return;
     int set_index = (paddr / cache->line_size) % cache->num_sets;
@@ -498,82 +498,3 @@ void flush_data(unsigned int paddr) {
     flush_cache_line(g_l3, paddr);
     flush_cache_line(g_l4, paddr);
 }
-
-/* ---------------- Main Simulator ---------------- */
-
-#ifdef UNIT_TEST
-/* Interactive test loop for unit testing */
-#include <string.h>
-int main() {
-    init();
-    start();
-    
-    char op;
-    char subtype;
-    unsigned int vaddr, paddr;
-    
-    printf("Enter commands:\n");
-    printf("  I <vaddr> <paddr>         : Instruction fetch access\n");
-    printf("  R <vaddr> <paddr>         : Data read access\n");
-    printf("  W <vaddr> <paddr>         : Data write access\n");
-    printf("  F I <paddr>               : Flush instruction cache line\n");
-    printf("  F D <paddr>               : Flush data cache line\n");
-    printf("  P I <vaddr> <paddr>       : Prefetch into instruction cache\n");
-    printf("  P D <vaddr> <paddr>       : Prefetch into data cache\n");
-    printf("Ctrl+D (or Ctrl+Z on Windows) to end input.\n\n");
-    
-    while (scanf(" %c", &op) == 1) {
-        if (op == 'I' || op == 'R' || op == 'W') {
-            if (scanf(" %x %x", &vaddr, &paddr) != 2)
-                break;
-            if (op == 'I') {
-                int latency = simulate_memory_access(vaddr, paddr, 1);
-                printf("Instruction access at 0x%x: latency = %d cycles\n", paddr, latency);
-            } else if (op == 'R') {
-                int latency = simulate_memory_access(vaddr, paddr, 0);
-                printf("Data read access at 0x%x: latency = %d cycles\n", paddr, latency);
-            } else if (op == 'W') {
-                int latency = simulate_memory_access(vaddr, paddr, 0);
-                printf("Data write access at 0x%x: latency = %d cycles\n", paddr, latency);
-            }
-        } else if (op == 'F' || op == 'P') {
-            if (op == 'F') {
-                if (scanf(" %c %x", &subtype, &paddr) != 2)
-                    break;
-                if (subtype == 'I') {
-                    flush_instruction(paddr);
-                    printf("Flushed instruction cache line for address 0x%x\n", paddr);
-                } else if (subtype == 'D') {
-                    flush_data(paddr);
-                    printf("Flushed data cache line for address 0x%x\n", paddr);
-                } else {
-                    printf("Unknown flush subtype: %c\n", subtype);
-                }
-            } else {
-                if (scanf(" %c %x %x", &subtype, &vaddr, &paddr) != 3)
-                    break;
-                if (subtype == 'I') {
-                    int latency = simulate_prefetch(vaddr, paddr, 1);
-                    printf("Prefetch (instruction) for address 0x%x: latency = %d cycles\n", paddr, latency);
-                } else if (subtype == 'D') {
-                    int latency = simulate_prefetch(vaddr, paddr, 0);
-                    printf("Prefetch (data) for address 0x%x: latency = %d cycles\n", paddr, latency);
-                } else {
-                    printf("Unknown prefetch subtype: %c\n", subtype);
-                }
-            }
-        } else {
-            printf("Unknown command: %c\n", op);
-        }
-    }
-    
-    end();
-    close();
-    return 0;
-}
-#else
-int main() {
-    /* Production build: main() would call init(), start(), and later end() and close() via API calls. */
-    return 0;
-}
-#endif

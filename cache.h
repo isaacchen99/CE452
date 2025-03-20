@@ -57,26 +57,26 @@ void free_cache_level(CacheLevel *cache);
  *   Instantiates the cache levels using hard-coded parameters and registers them.
  *   (This does not start counting simulation data.)
  */
-void init();
+void init(void);
 
 /*
  * start()
  *   Resets internal simulation counters (number of accesses and latency totals)
  *   and begins counting data.
  */
-void start();
+void start(void);
 
 /*
  * end()
  *   Stops the simulation (i.e. stops counting) and writes a report to "results.log".
  */
-void end();
+void end(void);
 
 /*
  * close()
  *   Frees all allocated cache memory and performs final cleanup.
  */
-void close();
+void close(void);
 
 /*
  * simulate_memory_access()

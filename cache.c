@@ -1,13 +1,24 @@
 #include "cache.h"
 #include <errno.h>
 
-/* Internal global variables used by the simulator */
+/* ---------------- Internal Global Variables ---------------- */
+
+/* Pointers to the cache levels */
 static CacheLevel *g_l1_data = NULL;
 static CacheLevel *g_l1_instr = NULL;
 static CacheLevel *g_l2 = NULL;
 static CacheLevel *g_l3 = NULL;
 static CacheLevel *g_l4 = NULL;
+
+/* Global internal time counter */
 static unsigned long g_current_time = 0;
+
+/* Global simulation counters */
+static int g_mem_accesses = 0;
+static int g_instr_accesses = 0;
+static int g_data_accesses = 0;
+static unsigned long g_total_latency_instr = 0;
+static unsigned long g_total_latency_data = 0;
 
 /* ---------------- Replacement Policy Implementations ---------------- */
 
@@ -93,6 +104,9 @@ void free_cache_level(CacheLevel *cache) {
 
 /* ---------------- Cache Simulator Initialization ---------------- */
 
+/*
+ * init_cache_simulator() registers the caches with the simulator.
+ */
 void init_cache_simulator(CacheLevel *l1_data, CacheLevel *l1_instr, CacheLevel *l2, CacheLevel *l3, CacheLevel *l4) {
     g_l1_data   = l1_data;
     g_l1_instr  = l1_instr;
@@ -102,15 +116,100 @@ void init_cache_simulator(CacheLevel *l1_data, CacheLevel *l1_instr, CacheLevel 
     g_current_time = 0;
 }
 
+/*
+ * init() instantiates the cache levels (using hard-coded configuration),
+ * registers them with the simulator, and resets simulation counters.
+ */
+void init() {
+    int use_l1 = 1;      // Instantiate L1 caches (data and instruction)
+    int use_l2 = 1;
+    int use_l3 = 1;
+    int use_l4 = 1;
+    
+    /* Hard-coded cache configuration parameters */
+    int l1_size = 32 * 1024;       // 32 KB for each L1 cache
+    int l1_assoc = 8;
+    int l1_line = 64;
+    int l1_latency = 1;
+    
+    int l2_size = 256 * 1024;      // 256 KB
+    int l2_assoc = 8;
+    int l2_line = 64;
+    int l2_latency = 10;
+    
+    int l3_size = 512 * 1024;      // 512 KB
+    int l3_assoc = 8;
+    int l3_line = 64;
+    int l3_latency = 20;
+    
+    int l4_size = 2 * 1024 * 1024; // 2 MB
+    int l4_assoc = 16;
+    int l4_line = 64;
+    int l4_latency = 40;
+    
+    /* Instantiate caches if enabled */
+    if (use_l1) {
+        g_l1_data = init_cache_level(l1_size, l1_assoc, l1_line, l1_latency, POLICY_LRU);
+        g_l1_instr = init_cache_level(l1_size, l1_assoc, l1_line, l1_latency, POLICY_LRU);
+    }
+    if (use_l2)
+        g_l2 = init_cache_level(l2_size, l2_assoc, l2_line, l2_latency, POLICY_LRU);
+    if (use_l3)
+        g_l3 = init_cache_level(l3_size, l3_assoc, l3_line, l3_latency, POLICY_LRU);
+    if (use_l4)
+        g_l4 = init_cache_level(l4_size, l4_assoc, l4_line, l4_latency, POLICY_LRU);
+    
+    /* Register the cache levels */
+    init_cache_simulator(g_l1_data, g_l1_instr, g_l2, g_l3, g_l4);
+    
+    /* Reset simulation counters */
+    g_mem_accesses = 0;
+    g_instr_accesses = 0;
+    g_data_accesses = 0;
+    g_total_latency_instr = 0;
+    g_total_latency_data = 0;
+    g_current_time = 0;
+}
+
+/*
+ * end() writes simulation statistics to "results.log" and frees all caches.
+ */
+void end() {
+    FILE *fp = fopen("results.log", "w");
+    if (!fp) {
+        perror("fopen");
+        exit(1);
+    }
+    
+    fprintf(fp, "--- Simulation Statistics ---\n");
+    fprintf(fp, "Total memory accesses: %d\n", g_mem_accesses);
+    if (g_instr_accesses > 0)
+        fprintf(fp, "Instruction accesses: average latency = %.2f cycles\n", (double)g_total_latency_instr / g_instr_accesses);
+    else
+        fprintf(fp, "Instruction accesses: none\n");
+    if (g_data_accesses > 0)
+        fprintf(fp, "Data accesses: average latency = %.2f cycles\n", (double)g_total_latency_data / g_data_accesses);
+    else
+        fprintf(fp, "Data accesses: none\n");
+    fclose(fp);
+    
+    /* Free allocated caches */
+    if (g_l1_data) { free_cache_level(g_l1_data); g_l1_data = NULL; }
+    if (g_l1_instr) { free_cache_level(g_l1_instr); g_l1_instr = NULL; }
+    if (g_l2) { free_cache_level(g_l2); g_l2 = NULL; }
+    if (g_l3) { free_cache_level(g_l3); g_l3 = NULL; }
+    if (g_l4) { free_cache_level(g_l4); g_l4 = NULL; }
+}
+
 /* ---------------- Extended Cache Access Simulation ---------------- */
 
 int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_type) {
-    // access_type: -1 for instruction access, otherwise data access.
+    // access_type: -1 for instruction access; otherwise, data access.
     g_current_time++;
     int latency = 0;
-    int hit_level = 0;  // internal variable.
+    int hit_level = 0;
     
-    // Choose L1 based on access_type.
+    // Select the appropriate L1 cache.
     CacheLevel *l1 = (access_type == -1 ? g_l1_instr : g_l1_data);
     
     /* ---------------- L1 Check ---------------- */
@@ -278,12 +377,21 @@ int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_ty
     }
     
 DONE:
+    /* Update simulation counters */
+    if (access_type == -1) {
+        g_total_latency_instr += latency;
+        g_instr_accesses++;
+    } else {
+        g_total_latency_data += latency;
+        g_data_accesses++;
+    }
+    g_mem_accesses++;
+    
     return latency;
 }
 
 int simulate_prefetch(unsigned int vaddr, unsigned int paddr, int access_type) {
-    // For prefetch, we only insert the block into the L1 cache.
-    // access_type: -1 for instruction, otherwise data.
+    // For prefetch, only insert the block into the appropriate L1 cache.
     g_current_time++;
     int latency = 0;
     int hit_level = 0;
@@ -360,61 +468,14 @@ void flush_data(unsigned int paddr) {
 
 /* ---------------- Main Simulator ---------------- */
 
+#ifdef UNIT_TEST
+/* For testing purposes, an interactive command loop may still be provided */
+#include <string.h>
 int main() {
-    /* ---------------- Cache Configuration Flags ---------------- */
-    int use_l1 = 1;      // Instantiate L1 caches (data and instruction)
-    int use_l2 = 1;
-    int use_l3 = 1;
-    int use_l4 = 1;
+    init();
     
-    /* ---------------- Cache Configuration Parameters ---------------- */
-    int l1_size = 32 * 1024;       // 32 KB for each L1 cache
-    int l1_assoc = 8;
-    int l1_line = 64;
-    int l1_latency = 1;
-    
-    int l2_size = 256 * 1024;      // 256 KB
-    int l2_assoc = 8;
-    int l2_line = 64;
-    int l2_latency = 10;
-    
-    int l3_size = 512 * 1024;      // 512 KB
-    int l3_assoc = 8;
-    int l3_line = 64;
-    int l3_latency = 20;
-    
-    int l4_size = 2 * 1024 * 1024; // 2 MB
-    int l4_assoc = 16;
-    int l4_line = 64;
-    int l4_latency = 40;
-    
-    /* ---------------- Cache Instantiation ---------------- */
-    CacheLevel *l1_data = (use_l1 ? init_cache_level(l1_size, l1_assoc, l1_line, l1_latency, POLICY_LRU) : NULL);
-    CacheLevel *l1_instr = (use_l1 ? init_cache_level(l1_size, l1_assoc, l1_line, l1_latency, POLICY_LRU) : NULL);
-    CacheLevel *l2 = (use_l2 ? init_cache_level(l2_size, l2_assoc, l2_line, l2_latency, POLICY_LRU) : NULL);
-    CacheLevel *l3 = (use_l3 ? init_cache_level(l3_size, l3_assoc, l3_line, l3_latency, POLICY_LRU) : NULL);
-    CacheLevel *l4 = (use_l4 ? init_cache_level(l4_size, l4_assoc, l4_line, l4_latency, POLICY_LRU) : NULL);
-    
-    // Register the cache levels with the simulator.
-    init_cache_simulator(l1_data, l1_instr, l2, l3, l4);
-    
-    /* ---------------- Simulation Statistics ---------------- */
-    int mem_accesses = 0;
-    unsigned long total_latency_data = 0;
-    unsigned long total_latency_instr = 0;
-    
-    /*
-     * Supported commands:
-     *   I <vaddr> <paddr>         : Instruction fetch (access_type = -1)
-     *   R <vaddr> <paddr>         : Data read (access_type != -1)
-     *   W <vaddr> <paddr>         : Data write (access_type != -1, same as read)
-     *   F I <paddr>               : Flush instruction cache line
-     *   F D <paddr>               : Flush data cache line
-     *   P I <vaddr> <paddr>       : Prefetch into instruction cache (access_type = -1)
-     *   P D <vaddr> <paddr>       : Prefetch into data cache (access_type != -1)
-     */
     char op;
-    char subtype; // For flush/prefetch commands.
+    char subtype;
     unsigned int vaddr, paddr;
     
     printf("Enter commands:\n");
@@ -427,25 +488,18 @@ int main() {
     printf("  P D <vaddr> <paddr>       : Prefetch into data cache\n");
     printf("Ctrl+D (or Ctrl+Z on Windows) to end input.\n\n");
     
-    while (1) {
-        if (scanf(" %c", &op) != 1)
-            break;
-        
+    while (scanf(" %c", &op) == 1) {
         if (op == 'I' || op == 'R' || op == 'W') {
             if (scanf(" %x %x", &vaddr, &paddr) != 2)
                 break;
-            mem_accesses++;
             if (op == 'I') {
                 int latency = simulate_memory_access(vaddr, paddr, -1);
-                total_latency_instr += latency;
                 printf("Instruction access at 0x%x: latency = %d cycles\n", paddr, latency);
             } else if (op == 'R') {
                 int latency = simulate_memory_access(vaddr, paddr, 0);
-                total_latency_data += latency;
                 printf("Data read access at 0x%x: latency = %d cycles\n", paddr, latency);
             } else if (op == 'W') {
                 int latency = simulate_memory_access(vaddr, paddr, 0);
-                total_latency_data += latency;
                 printf("Data write access at 0x%x: latency = %d cycles\n", paddr, latency);
             }
         } else if (op == 'F' || op == 'P') {
@@ -479,22 +533,12 @@ int main() {
         }
     }
     
-    /* ---------------- Simulation Statistics ---------------- */
-    printf("\n--- Simulation Statistics ---\n");
-    printf("Total memory accesses: %d\n", mem_accesses);
-    printf("Instruction accesses: average latency = %.2f cycles\n", (mem_accesses ? (double)total_latency_instr/mem_accesses : 0.0));
-    printf("Data accesses: average latency = %.2f cycles\n", (mem_accesses ? (double)total_latency_data/mem_accesses : 0.0));
-    
-    if (l1_data != NULL)
-        free_cache_level(l1_data);
-    if (l1_instr != NULL)
-        free_cache_level(l1_instr);
-    if (l2 != NULL)
-        free_cache_level(l2);
-    if (l3 != NULL)
-        free_cache_level(l3);
-    if (l4 != NULL)
-        free_cache_level(l4);
-    
+    end();
     return 0;
 }
+#else
+int main() {
+    /* In a production build, main() could simply call init(), let the user drive simulation via an API, and later call end(). */
+    return 0;
+}
+#endif

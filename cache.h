@@ -51,14 +51,18 @@ int find_victim_bip(CacheSet *set);
 CacheLevel* init_cache_level(int cache_size, int associativity, int line_size, int access_latency, ReplacementPolicy policy);
 void free_cache_level(CacheLevel *cache);
 
-/* ---------------- Cache Simulator Initialization ---------------- */
+/* ---------------- Cache Simulator API ---------------- */
 /*
- * init_cache_simulator() registers the cache levels (which are instantiated in main())
- * with the simulator. Any level can be omitted by passing a NULL pointer.
+ * init() instantiates the cache levels (using hard-coded values),
+ * registers them with the simulator, and resets internal counters.
  */
-void init_cache_simulator(CacheLevel *l1_data, CacheLevel *l1_instr, CacheLevel *l2, CacheLevel *l3, CacheLevel *l4);
+void init();
 
-/* ---------------- Cache Access Simulation ---------------- */
+/*
+ * end() writes a report to a file called "results.log" and frees all cache memory.
+ */
+void end();
+
 /*
  * simulate_memory_access() simulates a memory access.
  *
@@ -67,10 +71,8 @@ void init_cache_simulator(CacheLevel *l1_data, CacheLevel *l1_instr, CacheLevel 
  *  - paddr: physical address (used for cache lookup)
  *  - access_type: use -1 for an instruction access (instruction cache) and any other value for a data access (data cache)
  *
- * The simulator internally uses a global time counter and the cache levels registered via
- * init_cache_simulator().
- *
  * Returns the total latency (in cycles) incurred by the access.
+ * (Global counters are updated internally.)
  */
 int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_type);
 
@@ -82,7 +84,6 @@ int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_ty
  */
 int simulate_prefetch(unsigned int vaddr, unsigned int paddr, int access_type);
 
-/* ---------------- Cache Maintenance ---------------- */
 /*
  * flush_instruction() flushes (invalidates) the cache line corresponding to the given physical address
  * from the instruction cache (if present) and all lower levels.

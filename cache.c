@@ -213,10 +213,10 @@ void end(void) {
 }
 
 /*
- * close()
+ * deinit()
  *   Frees all allocated cache memory and performs final cleanup.
  */
-void close(void) {
+void deinit(void) {
     if (g_l1_data) { free_cache_level(g_l1_data); g_l1_data = NULL; }
     if (g_l1_instr) { free_cache_level(g_l1_instr); g_l1_instr = NULL; }
     if (g_l2) { free_cache_level(g_l2); g_l2 = NULL; }

@@ -20,6 +20,9 @@ static int g_data_accesses = 0;
 static unsigned long g_total_latency_instr = 0;
 static unsigned long g_total_latency_data = 0;
 
+/* Flag to indicate whether simulation counting is active */
+static int g_counting = 0;
+
 /* ---------------- Replacement Policy Implementations ---------------- */
 
 /* LRU: update simply records the current internal time */
@@ -102,10 +105,10 @@ void free_cache_level(CacheLevel *cache) {
     }
 }
 
-/* ---------------- Cache Simulator Initialization ---------------- */
+/* ---------------- Simulator Internal Registration ---------------- */
 
 /*
- * init_cache_simulator() registers the caches with the simulator.
+ * init_cache_simulator() registers the cache levels with the simulator.
  */
 void init_cache_simulator(CacheLevel *l1_data, CacheLevel *l1_instr, CacheLevel *l2, CacheLevel *l3, CacheLevel *l4) {
     g_l1_data   = l1_data;
@@ -116,9 +119,12 @@ void init_cache_simulator(CacheLevel *l1_data, CacheLevel *l1_instr, CacheLevel 
     g_current_time = 0;
 }
 
+/* ---------------- Simulator API Functions ---------------- */
+
 /*
- * init() instantiates the cache levels (using hard-coded configuration),
- * registers them with the simulator, and resets simulation counters.
+ * init()
+ *   Instantiates the cache levels using hard-coded configuration and registers them.
+ *   This does not start simulation counting.
  */
 void init() {
     int use_l1 = 1;      // Instantiate L1 caches (data and instruction)
@@ -162,17 +168,27 @@ void init() {
     /* Register the cache levels */
     init_cache_simulator(g_l1_data, g_l1_instr, g_l2, g_l3, g_l4);
     
-    /* Reset simulation counters */
+    /* Do not start counting yet */
+    g_counting = 0;
+}
+
+/*
+ * start()
+ *   Resets simulation counters and starts counting memory accesses.
+ */
+void start() {
     g_mem_accesses = 0;
     g_instr_accesses = 0;
     g_data_accesses = 0;
     g_total_latency_instr = 0;
     g_total_latency_data = 0;
     g_current_time = 0;
+    g_counting = 1;
 }
 
 /*
- * end() writes simulation statistics to "results.log" and frees all caches.
+ * end()
+ *   Stops counting and writes simulation statistics to "results.log".
  */
 void end() {
     FILE *fp = fopen("results.log", "w");
@@ -193,7 +209,14 @@ void end() {
         fprintf(fp, "Data accesses: none\n");
     fclose(fp);
     
-    /* Free allocated caches */
+    g_counting = 0;
+}
+
+/*
+ * close()
+ *   Frees all allocated cache memory and performs final cleanup.
+ */
+void close() {
     if (g_l1_data) { free_cache_level(g_l1_data); g_l1_data = NULL; }
     if (g_l1_instr) { free_cache_level(g_l1_instr); g_l1_instr = NULL; }
     if (g_l2) { free_cache_level(g_l2); g_l2 = NULL; }
@@ -203,16 +226,24 @@ void end() {
 
 /* ---------------- Extended Cache Access Simulation ---------------- */
 
+/*
+ * simulate_memory_access()
+ *   Simulates a memory access.
+ *   Parameters:
+ *     - vaddr: virtual address (used for tagging)
+ *     - paddr: physical address (used for lookup)
+ *     - access_type: use 1 for instruction access (instruction cache), 0 for data access.
+ *   Returns the total latency (in cycles).
+ */
 int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_type) {
-    // access_type: -1 for instruction access; otherwise, data access.
     g_current_time++;
     int latency = 0;
     int hit_level = 0;
     
-    // Select the appropriate L1 cache.
+    /* Select the appropriate L1 cache */
     CacheLevel *l1 = (access_type == 1 ? g_l1_instr : g_l1_data);
     
-    /* ---------------- L1 Check ---------------- */
+    /* L1 Check */
     if (l1 != NULL) {
         int l1_set_index = (paddr / l1->line_size) % l1->num_sets;
         unsigned int l1_tag = paddr / (l1->line_size * l1->num_sets);
@@ -228,7 +259,7 @@ int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_ty
         latency += l1->access_latency;  // L1 miss penalty.
     }
     
-    /* ---------------- L2 Check ---------------- */
+    /* L2 Check */
     if (g_l2 != NULL) {
         int l2_set_index = (paddr / g_l2->line_size) % g_l2->num_sets;
         unsigned int l2_tag = paddr / (g_l2->line_size * g_l2->num_sets);
@@ -257,7 +288,7 @@ int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_ty
         }
     }
     
-    /* ---------------- L3 Check ---------------- */
+    /* L3 Check */
     if (g_l3 != NULL) {
         int l3_set_index = (paddr / g_l3->line_size) % g_l3->num_sets;
         unsigned int l3_tag = paddr / (g_l3->line_size * g_l3->num_sets);
@@ -293,7 +324,7 @@ int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_ty
         }
     }
     
-    /* ---------------- L4 Check ---------------- */
+    /* L4 Check */
     if (g_l4 != NULL) {
         int l4_set_index = (paddr / g_l4->line_size) % g_l4->num_sets;
         unsigned int l4_tag = paddr / (g_l4->line_size * g_l4->num_sets);
@@ -336,7 +367,7 @@ int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_ty
         }
     }
     
-    /* ---------------- Main Memory Access ---------------- */
+    /* Main Memory Access */
     latency += MEM_LATENCY;
     hit_level = 0;
     if (g_l4 != NULL) {
@@ -377,15 +408,17 @@ int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_ty
     }
     
 DONE:
-    /* Update simulation counters */
-    if (access_type == 1) {
-        g_total_latency_instr += latency;
-        g_instr_accesses++;
-    } else {
-        g_total_latency_data += latency;
-        g_data_accesses++;
+    /* Update simulation counters only if counting is active */
+    if (g_counting) {
+        if (access_type == 1) {
+            g_total_latency_instr += latency;
+            g_instr_accesses++;
+        } else {
+            g_total_latency_data += latency;
+            g_data_accesses++;
+        }
+        g_mem_accesses++;
     }
-    g_mem_accesses++;
     
     return latency;
 }
@@ -469,10 +502,11 @@ void flush_data(unsigned int paddr) {
 /* ---------------- Main Simulator ---------------- */
 
 #ifdef UNIT_TEST
-/* For testing purposes, an interactive command loop may still be provided */
+/* Interactive test loop for unit testing */
 #include <string.h>
 int main() {
     init();
+    start();
     
     char op;
     char subtype;
@@ -515,7 +549,7 @@ int main() {
                 } else {
                     printf("Unknown flush subtype: %c\n", subtype);
                 }
-            } else { // op == 'P'
+            } else {
                 if (scanf(" %c %x %x", &subtype, &vaddr, &paddr) != 3)
                     break;
                 if (subtype == 'I') {
@@ -534,11 +568,12 @@ int main() {
     }
     
     end();
+    close();
     return 0;
 }
 #else
 int main() {
-    /* In a production build, main() could simply call init(), let the user drive simulation via an API, and later call end(). */
+    /* Production build: main() would call init(), start(), and later end() and close() via API calls. */
     return 0;
 }
 #endif

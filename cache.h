@@ -51,48 +51,67 @@ int find_victim_bip(CacheSet *set);
 CacheLevel* init_cache_level(int cache_size, int associativity, int line_size, int access_latency, ReplacementPolicy policy);
 void free_cache_level(CacheLevel *cache);
 
-/* ---------------- Cache Simulator API ---------------- */
+/* ---------------- Simulator API ---------------- */
 /*
- * init() instantiates the cache levels (using hard-coded values),
- * registers them with the simulator, and resets internal counters.
+ * init()
+ *   Instantiates the cache levels using hard-coded parameters and registers them.
+ *   (This does not start counting simulation data.)
  */
 void init();
 
 /*
- * end() writes a report to a file called "results.log" and frees all cache memory.
+ * start()
+ *   Resets internal simulation counters (number of accesses and latency totals)
+ *   and begins counting data.
+ */
+void start();
+
+/*
+ * end()
+ *   Stops the simulation (i.e. stops counting) and writes a report to "results.log".
  */
 void end();
 
 /*
- * simulate_memory_access() simulates a memory access.
+ * close()
+ *   Frees all allocated cache memory and performs final cleanup.
+ */
+void close();
+
+/*
+ * simulate_memory_access()
+ *   Simulates a memory access.
  *
  * Parameters:
- *  - vaddr: virtual address (used for tagging, etc.)
- *  - paddr: physical address (used for cache lookup)
- *  - access_type: use -1 for an instruction access (instruction cache) and any other value for a data access (data cache)
+ *   - vaddr: virtual address (used for tagging, etc.)
+ *   - paddr: physical address (used for cache lookup)
+ *   - access_type: use 1 for an instruction access (instruction cache), 0 for a data access.
  *
  * Returns the total latency (in cycles) incurred by the access.
- * (Global counters are updated internally.)
+ * (Global counters are updated only if the simulation is active.)
  */
 int simulate_memory_access(unsigned int vaddr, unsigned int paddr, int access_type);
 
 /*
- * simulate_prefetch() works similarly to simulate_memory_access() but only inserts a block into the L1 cache.
- * Use the same access_type flag (-1 for instruction, otherwise data).
+ * simulate_prefetch()
+ *   Works similarly to simulate_memory_access() but only inserts a block into the L1 cache.
+ *   Use the same access_type flag (1 for instruction, 0 for data).
  *
  * Returns the latency incurred by the prefetch.
  */
 int simulate_prefetch(unsigned int vaddr, unsigned int paddr, int access_type);
 
 /*
- * flush_instruction() flushes (invalidates) the cache line corresponding to the given physical address
- * from the instruction cache (if present) and all lower levels.
+ * flush_instruction()
+ *   Flushes (invalidates) the cache line corresponding to the given physical address
+ *   from the instruction cache (if present) and from lower levels.
  */
 void flush_instruction(unsigned int paddr);
 
 /*
- * flush_data() flushes (invalidates) the cache line corresponding to the given physical address
- * from the data cache (if present) and all lower levels.
+ * flush_data()
+ *   Flushes (invalidates) the cache line corresponding to the given physical address
+ *   from the data cache (if present) and from lower levels.
  */
 void flush_data(unsigned int paddr);
 

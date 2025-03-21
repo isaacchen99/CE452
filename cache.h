@@ -9,42 +9,36 @@
 
 #define CONFIG "configDEFAULT.txt"
 
-/* ---------------- Replacement Policy Enum ---------------- */
 typedef enum {
     POLICY_LRU,
     POLICY_BIP,
     POLICY_RANDOM
 } ReplacementPolicy;
 
-/* ---------------- Cache Line ---------------- */
 typedef struct {
     unsigned int tag;
     unsigned long valid;
-    unsigned long last_access_time;  // used for LRU/BIP (not used for RANDOM)
+    unsigned long last_access_time;  // used for LRU/BIP 
 } CacheLine;
 
-/* ---------------- Cache Set ---------------- */
 typedef struct {
-    unsigned long num_lines;         // equals associativity
-    CacheLine *lines;                // dynamically allocated array of cache lines
+    unsigned long num_lines; // == associativity
+    CacheLine *lines;               
 } CacheSet;
 
-/* ---------------- Cache Level ---------------- */
 typedef struct CacheLevel {
-    unsigned long cache_size;        // in bytes
-    unsigned long associativity;     // number of lines per set
-    unsigned long line_size;         // in bytes
-    unsigned long num_sets;          // computed as cache_size / (line_size * associativity)
-    unsigned long access_latency;    // in cycles (access time)
+    unsigned long cache_size; // bytes
+    unsigned long associativity;
+    unsigned long line_size;         
+    unsigned long num_sets;          
+    unsigned long access_latency; // cycles
     ReplacementPolicy policy;
-    CacheSet *sets;                  // array of sets
+    CacheSet *sets;                  
 
-    /* Function pointers for replacement policy operations */
     void (*update_policy)(CacheSet *set, unsigned long line_index);
     unsigned long (*find_victim)(CacheSet *set);
 } CacheLevel;
 
-/* ---------------- Configuration Structure ---------------- */
 typedef struct {
     unsigned long use_l1;
     unsigned long use_l2;
@@ -78,15 +72,10 @@ typedef struct {
     unsigned long mem_latency;
 } CacheConfig;
 
-/* Global configuration variable. */
 extern CacheConfig g_config;
 
-/* ---------------- Function Prototypes ---------------- */
-
-/* Configuration file reader */
 void read_config(const char *filename);
 
-/* Replacement Policy Function Prototypes */
 void update_policy_lru(CacheSet *set, unsigned long line_index);
 unsigned long find_victim_lru(CacheSet *set);
 
@@ -96,11 +85,10 @@ unsigned long find_victim_bip(CacheSet *set);
 void update_policy_random(CacheSet *set, unsigned long line_index);
 unsigned long find_victim_random(CacheSet *set);
 
-/* Cache Level Initialization and Deallocation */
 CacheLevel* init_cache_level(unsigned long cache_size, unsigned long associativity, unsigned long line_size, unsigned long access_latency, ReplacementPolicy policy);
 void free_cache_level(CacheLevel *cache);
 
-/* ---------------- Simulator API ---------------- */
+// simulator API calls
 void init(void);
 void start(void);
 void end(void);
@@ -112,14 +100,13 @@ void flush_data(unsigned long paddr);
 void invalidate(unsigned long paddr);
 void invalidate_all(void);
 
-/* New Prefetch Functions */
+// prefetch instructions
 unsigned long simulate_prefetch_t0(unsigned long vaddr, unsigned long paddr, unsigned long access_type);
 unsigned long simulate_prefetch_t1(unsigned long vaddr, unsigned long paddr, unsigned long access_type);
 unsigned long simulate_prefetch_t2(unsigned long vaddr, unsigned long paddr, unsigned long access_type);
 unsigned long simulate_prefetch_nta(unsigned long vaddr, unsigned long paddr, unsigned long access_type);
 unsigned long simulate_prefetch_w(unsigned long vaddr, unsigned long paddr, unsigned long access_type);
 
-/* ---------------- Global Internal Variables ---------------- */
 extern CacheLevel *g_l1_data;
 extern CacheLevel *g_l1_instr;
 extern CacheLevel *g_l2;
@@ -131,7 +118,6 @@ extern unsigned long g_instr_accesses;
 extern unsigned long g_data_accesses;
 extern unsigned long g_total_latency_instr;
 extern unsigned long g_total_latency_data;
-/* g_counting indicates whether simulation counting is active */
 extern unsigned long g_counting;
 
-#endif /* CACHE_H */
+#endif
